@@ -974,27 +974,20 @@ def format_user_table(data):
 
 # ====== FLEX ======
 # ====================================================================
-# ====== THEME: Light & Clean — การ์ดทุกใบใช้สี/รูปแบบชุดเดียวกัน ======
+# ====== THEME: Light & Clean v2 — หัวการ์ดสีทึบ ตัวหนังสือเข้ม อ่านง่าย ======
 # ====================================================================
 # ไล่ / สูง = ฟ้า   •   ยั้ง / ต่ำ = แดง   •   เปิด = เขียว   •   พัก = ส้ม   •   ปิด = แดง
 TH = {
-    "bg": "#FFFFFF", "page": "#F5F7FA", "line": "#E5E7EB",
-    "text": "#1F2937", "muted": "#6B7280", "faint": "#9CA3AF",
-    "green": "#16A34A", "green_bg": "#ECFDF3",
-    "blue": "#2563EB", "blue_bg": "#EFF6FF",
-    "red": "#DC2626", "red_bg": "#FEF2F2",
-    "amber": "#D97706", "amber_bg": "#FFFBEB",
-    "purple": "#7C3AED", "purple_bg": "#F5F3FF",
-    "gray": "#6B7280", "gray_bg": "#F3F4F6",
+    "bg": "#FFFFFF", "page": "#F3F4F6", "line": "#E5E7EB",
+    "text": "#111827", "sub": "#374151", "muted": "#4B5563", "faint": "#6B7280",
+    "green": "#15803D", "green_bg": "#E8F7EE",
+    "blue": "#1D4ED8", "blue_bg": "#E8F0FE",
+    "red": "#C81E1E", "red_bg": "#FDECEC",
+    "amber": "#B45309", "amber_bg": "#FEF3C7",
+    "purple": "#6D28D9", "purple_bg": "#F1EAFE",
+    "gray": "#374151", "gray_bg": "#F3F4F6",
 }
-TONE = {
-    "green": (TH["green"], TH["green_bg"]),
-    "blue": (TH["blue"], TH["blue_bg"]),
-    "red": (TH["red"], TH["red_bg"]),
-    "amber": (TH["amber"], TH["amber_bg"]),
-    "purple": (TH["purple"], TH["purple_bg"]),
-    "gray": (TH["gray"], TH["gray_bg"]),
-}
+TONE = {k: (TH[k], TH[k + "_bg"]) for k in ("green", "blue", "red", "amber", "purple", "gray")}
 SIDE_TONE = {"HI": "blue", "LO": "red"}
 SIDE_TH = {"HI": "สูง", "LO": "ต่ำ"}
 
@@ -1021,42 +1014,78 @@ def _sep(margin="md"):
 
 
 def _header(title, subtitle=None, tone="green"):
-    fg, bg = TONE[tone]
-    rows = [_box([
-        _box([], width="8px", height="8px", cornerRadius="8px", backgroundColor=fg),
-        _t(title, size="lg", weight="bold", color=fg, margin="md", flex=1),
-    ], layout="horizontal", alignItems="center")]
+    """แถบหัวสีทึบ ตัวหนังสือขาว + ป้ายรอบด้านขวา"""
+    fg, _ = TONE[tone]
+    row = [_t(title, size="lg", weight="bold", color="#FFFFFF", flex=1, gravity="center")]
     if subtitle:
-        rows.append(_t(subtitle, size="xs", color=TH["muted"], margin="xs"))
-    return _box(rows, backgroundColor=bg, paddingAll="14px", paddingStart="16px")
+        row.append(_box([_t(subtitle, size="xs", weight="bold", color=fg, align="center", wrap=False)],
+                        backgroundColor="#FFFFFF", cornerRadius="12px", flex=0,
+                        paddingTop="3px", paddingBottom="3px", paddingStart="10px", paddingEnd="10px",
+                        justifyContent="center"))
+    return _box(row, layout="horizontal", backgroundColor=fg, paddingAll="14px",
+                paddingStart="16px", paddingEnd="14px", alignItems="center")
 
 
-def _kv(label, value, value_color=None, bold=False, size="sm"):
+def _kv(label, value, value_color=None, bold=True, size="sm", ratio=(5, 5)):
     return _box([
-        _t(label, size=size, color=TH["muted"], flex=4),
+        _t(label, size=size, color=TH["muted"], flex=ratio[0]),
         _t(value, size=size, color=value_color or TH["text"], weight="bold" if bold else None,
-           align="end", flex=6),
+           align="end", flex=ratio[1]),
     ], layout="horizontal", margin="sm")
 
 
 def _pill(text, tone="gray", size="xs"):
     fg, bg = TONE[tone]
     return _box([_t(text, size=size, color=fg, weight="bold", align="center", wrap=False)],
-                backgroundColor=bg, cornerRadius="20px", paddingTop="3px", paddingBottom="3px",
+                backgroundColor=bg, cornerRadius="12px", paddingTop="3px", paddingBottom="3px",
                 paddingStart="10px", paddingEnd="10px", flex=0)
 
 
-def _hint_footer(lines):
-    return _box([_t(x, size="xxs", color=TH["faint"], align="center") for x in lines],
-                backgroundColor=TH["page"], paddingAll="10px", spacing="xs")
+def _camp_title(camp):
+    return _box([
+        _t("ชื่อค่าย", size="xs", color=TH["faint"], align="center"),
+        _t(f"🚀 {camp}", size="xl", weight="bold", align="center", margin="xs"),
+    ])
+
+
+def _side_row(label, value, tone, size="xl"):
+    """แถวเต็มความกว้าง: ป้ายฝั่งซ้าย ตัวเลขใหญ่ขวา (ไม่ถูกตัด)"""
+    fg, bg = TONE[tone]
+    return _box([
+        _t(label, size="md", weight="bold", color=fg, flex=4, gravity="center"),
+        _t(value, size=size, weight="bold", color=fg, align="end", flex=6, gravity="center", wrap=False),
+    ], layout="horizontal", backgroundColor=bg, cornerRadius="10px",
+        paddingAll="12px", paddingStart="14px", paddingEnd="14px", alignItems="center")
+
+
+def _key_chip(key, label):
+    return _box([
+        _box([_t(key, size="xs", weight="bold", color="#FFFFFF", align="center")],
+             backgroundColor=TH["gray"], cornerRadius="6px", width="22px", height="22px",
+             justifyContent="center"),
+        _t(label, size="xs", color=TH["sub"], margin="sm", gravity="center", wrap=False),
+    ], layout="horizontal", alignItems="center", flex=0)
+
+
+def _player_footer(disclaimer=True):
+    rows = [_box([_key_chip("X", "ยกเลิกบิล"), _box([], flex=1), _key_chip("C", "ดูยอดคงเหลือ")],
+                 layout="horizontal", alignItems="center")]
+    if disclaimer:
+        rows.append(_t("บอทไม่จับ ไม่ได้เสีย ทุกกรณี", size="xs", color=TH["faint"], align="center", margin="md"))
+    return _box(rows, backgroundColor=TH["page"], paddingAll="12px", paddingStart="16px", paddingEnd="16px")
+
+
+def _note_footer(text):
+    return _box([_t(text, size="xs", color=TH["faint"], align="center")],
+                backgroundColor=TH["page"], paddingAll="12px")
 
 
 def _bubble(header, body, footer=None, size="mega"):
     b = {
         "type": "bubble", "size": size,
         "header": header,
-        "body": _box(body, backgroundColor=TH["bg"], paddingAll="16px", spacing="sm"),
-        "styles": {"header": {"backgroundColor": TH["bg"]}, "body": {"backgroundColor": TH["bg"]}},
+        "body": _box(body, backgroundColor=TH["bg"], paddingAll="16px", spacing="md"),
+        "styles": {"body": {"backgroundColor": TH["bg"]}},
     }
     if footer:
         b["footer"] = footer
@@ -1064,100 +1093,90 @@ def _bubble(header, body, footer=None, size="mega"):
     return b
 
 
-HINTS_PLAYER = ["ยกเลิกบิล พิมพ์ X  •  ดูยอดคงเหลือ พิมพ์ C", "บอทไม่จับ ไม่ได้เสีย ทุกกรณี"]
-
-
 # ---------- เปิดรอบ (ยังไม่มีราคา) ----------
 def flex_open(pair_no, note=None):
     body = []
     if note:
-        body.append(_kv("ค่าย", note, bold=True))
-        body.append(_sep())
-    body.append(_t("เปิดรับแทงแล้ว", size="xl", weight="bold", color=TH["green"], align="center", margin="md"))
-    body.append(_t("รอแอดมินออกราคาสักครู่", size="sm", color=TH["muted"], align="center"))
+        body += [_camp_title(note), _sep()]
+    body += [
+        _t("เปิดรับแทงแล้ว", size="xxl", weight="bold", color=TH["green"], align="center"),
+        _t("รอแอดมินออกราคาสักครู่", size="md", color=TH["sub"], align="center"),
+    ]
     return FlexSendMessage(
         alt_text=f"เริ่มแทงได้ รอบที่ {pair_no}",
-        contents=_bubble(_header("เปิดรอบ", f"รอบที่ {pair_no}", "green"), body, _hint_footer(HINTS_PLAYER)),
+        contents=_bubble(_header("🟢 เปิดรอบ", f"รอบ {pair_no}", "green"), body, _player_footer()),
     )
 
 
 # ---------- กลับมาเปิดรอบ ----------
 def flex_resume(pair_no: int, camp: str):
     body = [
-        _kv("ค่าย", camp, bold=True),
-        _sep(),
-        _t("เปิดให้แทงต่อได้แล้ว", size="xl", weight="bold", color=TH["green"], align="center", margin="md"),
-        _t("ฮ่ำมันเข้าไปคักๆ หมานๆนะสมาชิก", size="sm", color=TH["muted"], align="center"),
+        _camp_title(camp), _sep(),
+        _t("เปิดให้แทงต่อแล้ว", size="xxl", weight="bold", color=TH["green"], align="center"),
+        _t("ฮ่ำมันเข้าไปคักๆ หมานๆนะสมาชิก", size="md", color=TH["sub"], align="center"),
     ]
     return FlexSendMessage(
         alt_text=f"กลับมาเปิดรอบ {pair_no}",
-        contents=_bubble(_header("เปิดรับแทงอีกครั้ง", f"รอบที่ {pair_no}", "green"), body, _hint_footer(HINTS_PLAYER)),
+        contents=_bubble(_header("🟢 เปิดรับแทงอีกครั้ง", f"รอบ {pair_no}", "green"), body, _player_footer()),
     )
 
 
 # ---------- ออกราคา ----------
-def _price_box(label, price, tone):
-    fg, bg = TONE[tone]
-    return _box([
-        _t(label, size="sm", color=fg, weight="bold", align="center"),
-        _t(price, size="xxl", color=fg, weight="bold", align="center", margin="xs",
-           wrap=False, adjustMode="shrink-to-fit"),
-    ], backgroundColor=bg, cornerRadius="12px", paddingAll="12px", flex=1)
-
-
 def flex_open_with_prices(pair_no, camp, hi_min, hi_max, lo_min, lo_max):
     hi_txt = f"{hi_min}-{hi_max}" if hi_min is not None and hi_max is not None else "-"
     lo_txt = f"{lo_min}-{lo_max}" if lo_min is not None and lo_max is not None else "-"
-    rules = [
-        f"แทงขั้นต่ำ {MIN_BET} - {fmt(MAX_BET)} บาท/คน/รอบ",
-        f"รับรวมต่อฝั่ง: สูง {fmt(SIDE_CAP['HI'])} • ต่ำ {fmt(SIDE_CAP['LO'])}",
-        f"ชนะจ่าย 1 : {PROFIT_RATE:.2f}  •  ออกกลางหัก {int(MIDDLE_FEE*100)}%",
-        "ซุ แตก คาฐาน หาย = จาว",
-        "ราคาแอดมินกำหนดตามความเหมาะสม",
-        "ออกราคาหลังปิด ถือว่าจาวทุกกรณี",
-    ]
+
+    rules = _box([
+        _kv("แทงต่อคน", f"{MIN_BET} - {fmt(MAX_BET)} บาท"),
+        _kv("รับรวมฝั่งสูง", f"{fmt(SIDE_CAP['HI'])} บาท"),
+        _kv("รับรวมฝั่งต่ำ", f"{fmt(SIDE_CAP['LO'])} บาท"),
+        _kv("ชนะจ่าย", f"1 : {PROFIT_RATE:.2f}"),
+        _kv("ออกกลาง", f"หัก {int(MIDDLE_FEE*100)}%"),
+        _kv("ซุ แตก คาฐาน หาย", "จาว", ratio=(8, 2)),
+    ], backgroundColor=TH["page"], cornerRadius="10px", paddingAll="12px", spacing="xs")
+
+    notes = _box([
+        _t("• ราคาแอดมินกำหนดตามความเหมาะสม", size="xs", color=TH["muted"]),
+        _t("• ออกราคาหลังปิด ถือว่าจาวทุกกรณี", size="xs", color=TH["muted"]),
+        _t("• หน้าฐานราคารูดผิดปกติ แอดมินแจ้งยกเลิกได้", size="xs", color=TH["amber"], weight="bold"),
+    ], spacing="xs")
+
     body = [
-        _kv("ค่าย", camp, bold=True, size="md"),
-        _box([_price_box("ไล่ (สูง)", hi_txt, "blue"), _price_box("ยั้ง (ต่ำ)", lo_txt, "red")],
-             layout="horizontal", spacing="sm", margin="md"),
-        _sep("lg"),
-        _box([_box([_t("•", size="xs", color=TH["faint"], flex=0),
-                    _t(r, size="xs", color=TH["muted"], flex=1, margin="sm")], layout="horizontal")
-              for r in rules], spacing="xs", margin="md"),
-        _box([_t("หน้าฐานราคารูดผิดปกติ แอดมินแจ้งยกเลิกได้", size="xxs", color=TH["amber"], align="center")],
-             backgroundColor=TH["amber_bg"], cornerRadius="8px", paddingAll="8px", margin="md"),
+        _camp_title(camp),
+        _side_row("ไล่ (สูง)", hi_txt, "blue", size="xxl"),
+        _side_row("ยั้ง (ต่ำ)", lo_txt, "red", size="xxl"),
+        rules,
+        notes,
     ]
     return FlexSendMessage(
-        alt_text=f"ราคามาแล้ว รอบที่ {pair_no} • {camp} ไล่ {hi_txt} ยั้ง {lo_txt}",
-        contents=_bubble(_header("ราคามาแล้ว", f"รอบที่ {pair_no}", "green"), body, _hint_footer(HINTS_PLAYER)),
+        alt_text=f"ราคามาแล้ว รอบ {pair_no} • {camp} ไล่ {hi_txt} ยั้ง {lo_txt}",
+        contents=_bubble(_header("🎯 ราคามาแล้ว", f"รอบ {pair_no}", "green"), body, _player_footer()),
     )
 
 
 # ---------- ปิดรอบ ----------
 def flex_close_notice(pair_no):
     body = [
-        _t("หยุดแทง", size="xxl", weight="bold", color=TH["red"], align="center", margin="sm"),
-        _t("ระบบปิดรับบิลแล้ว รอสรุปผล", size="sm", color=TH["muted"], align="center"),
+        _t("⛔ หยุดแทง", size="xxl", weight="bold", color=TH["red"], align="center"),
+        _t("ระบบปิดรับบิลแล้ว กรุณารอสรุปผล", size="md", color=TH["sub"], align="center"),
     ]
     return FlexSendMessage(
         alt_text=f"ปิดรอบ #{pair_no}",
-        contents=_bubble(_header("ปิดรับแทง", f"รอบที่ {pair_no}", "red"), body,
-                         _hint_footer(["บอทไม่จับ ไม่ได้เสีย ทุกกรณี"])),
+        contents=_bubble(_header("ปิดรับแทง", f"รอบ {pair_no}", "red"), body,
+                         _note_footer("บอทไม่จับ ไม่ได้เสีย ทุกกรณี")),
     )
 
 
 # ---------- พักรอบ ----------
 def flex_pause_notice(pair_no: int, camp: str):
-    camp = camp or "ไม่ระบุค่าย"
     body = [
-        _kv("ค่าย", camp, bold=True),
-        _sep(),
-        _t("หยุดแทงชั่วคราว", size="xl", weight="bold", color=TH["amber"], align="center", margin="md"),
-        _t("ระหว่างนี้แทงหรือยกเลิกบิลไม่ได้\nรอแอดมินเปิดอีกครั้ง", size="sm", color=TH["muted"], align="center"),
+        _camp_title(camp or "ไม่ระบุค่าย"), _sep(),
+        _t("⏸ หยุดแทงชั่วคราว", size="xl", weight="bold", color=TH["amber"], align="center"),
+        _t("ระหว่างนี้แทงหรือยกเลิกบิลไม่ได้\nรอแอดมินเปิดอีกครั้ง", size="sm", color=TH["sub"], align="center"),
     ]
     return FlexSendMessage(
         alt_text=f"พักรอบชั่วคราว #{pair_no}",
-        contents=_bubble(_header("พักรอบ", f"รอบที่ {pair_no}", "amber"), body),
+        contents=_bubble(_header("พักรอบ", f"รอบ {pair_no}", "amber"), body),
     )
 
 
@@ -1166,10 +1185,10 @@ def _avatar(user):
     pic = user.get("pictureUrl")
     if pic:
         return _box([{"type": "image", "url": pic, "size": "full", "aspectMode": "cover", "aspectRatio": "1:1"}],
-                    width="52px", height="52px", cornerRadius="26px", flex=0)
+                    width="56px", height="56px", cornerRadius="28px", flex=0)
     initial = (user.get("name") or "?").strip()[:1] or "?"
-    return _box([_t(initial, size="lg", weight="bold", color=TH["green"], align="center", gravity="center")],
-                width="52px", height="52px", cornerRadius="26px", backgroundColor=TH["green_bg"],
+    return _box([_t(initial, size="xl", weight="bold", color=TH["green"], align="center", gravity="center")],
+                width="56px", height="56px", cornerRadius="28px", backgroundColor=TH["green_bg"],
                 justifyContent="center", flex=0)
 
 
@@ -1189,45 +1208,35 @@ def flex_customer_card(st, user):
     ], layout="horizontal", alignItems="center")
 
     credit_box = _box([
-        _t("เครดิตคงเหลือ", size="xs", color=TH["muted"], align="center"),
-        _t(f"{fmt(credit)} ฿", size="3xl", weight="bold", color=TH["text"], align="center",
-           wrap=False, adjustMode="shrink-to-fit"),
+        _t("เครดิตคงเหลือ", size="sm", color=TH["muted"], align="center"),
+        _t(f"{fmt(credit)} ฿", size="3xl", weight="bold", color=TH["text"], align="center", wrap=False),
     ], backgroundColor=TH["page"], cornerRadius="12px", paddingAll="12px", margin="lg")
 
     if bet:
-        tone = SIDE_TONE[bet["side"]]
-        fg, bg = TONE[tone]
-        bet_box = _box([
-            _t("บิลรอบนี้", size="xs", color=TH["muted"], flex=1, gravity="center"),
-            _pill(SIDE_TH[bet["side"]], tone, size="sm"),
-            _t(f"{fmt(bet['amount'])} ฿", size="md", weight="bold", color=fg, align="end", flex=0, margin="md"),
-        ], layout="horizontal", alignItems="center", margin="md", paddingAll="10px",
-            cornerRadius="10px", backgroundColor=bg)
+        bet_box = _box([_side_row(f"บิล{SIDE_TH[bet['side']]}", f"{fmt(bet['amount'])} ฿",
+                                  SIDE_TONE[bet["side"]], size="lg")], margin="md")
     else:
-        bet_box = _t("ยังไม่มีบิลในรอบนี้", size="xs", color=TH["faint"], align="center", margin="md")
+        bet_box = _t("ยังไม่มีบิลในรอบนี้", size="sm", color=TH["faint"], align="center", margin="md")
 
     return FlexSendMessage(
         alt_text=f"ID {user['cid']} • เครดิต {fmt(credit)} บาท",
-        contents={
-            "type": "bubble", "size": "kilo",
-            "body": _box([top, credit_box, bet_box], backgroundColor=TH["bg"], paddingAll="16px"),
-        },
+        contents={"type": "bubble", "size": "kilo",
+                  "body": _box([top, credit_box, bet_box], backgroundColor=TH["bg"], paddingAll="16px")},
     )
 
 
 # ---------- สมัครสำเร็จ ----------
 def flex_register_success(cid: int):
     body = [
-        _t("ลงทะเบียนสำเร็จ", size="lg", weight="bold", color=TH["green"], align="center"),
-        _box([_t("ID ของคุณ", size="xs", color=TH["muted"], align="center"),
-              _t(str(cid), size="3xl", weight="bold", align="center")],
-             backgroundColor=TH["green_bg"], cornerRadius="12px", paddingAll="12px", margin="md"),
-        _t("พิมพ์ C เพื่อดูบัตรสมาชิก", size="xs", color=TH["faint"], align="center", margin="md"),
+        _t("ID ของคุณ", size="sm", color=TH["muted"], align="center"),
+        _t(str(cid), size="3xl", weight="bold", align="center"),
+        _t("พิมพ์ C เพื่อดูบัตรสมาชิก", size="sm", color=TH["sub"], align="center"),
     ]
     return FlexSendMessage(
         alt_text=f"ลงทะเบียนสำเร็จ ID {cid}",
         contents={"type": "bubble", "size": "kilo",
-                  "body": _box(body, backgroundColor=TH["bg"], paddingAll="16px")},
+                  "header": _header("✅ ลงทะเบียนสำเร็จ", None, "green"),
+                  "body": _box(body, backgroundColor=TH["bg"], paddingAll="16px", spacing="sm")},
     )
 
 
@@ -1248,15 +1257,15 @@ def flex_result_preview(code: str, pair_no: int):
     fg, bg = TONE[tone]
     body = [
         _box([_t(title, size="xl", weight="bold", color=fg, align="center"),
-              _t(desc, size="xs", color=TH["muted"], align="center", margin="xs")],
+              _t(desc, size="sm", color=TH["sub"], align="center", margin="xs")],
              backgroundColor=bg, cornerRadius="12px", paddingAll="14px"),
     ]
     if code in _RESULT_META:
-        body.append(_t("พิมพ์ /y เพื่อยืนยันผล", size="sm", weight="bold", align="center", margin="lg"))
-    body.append(_t("ต้องการเปลี่ยนผล พิมพ์ s<รหัสผล> ใหม่", size="xs", color=TH["muted"], align="center"))
+        body.append(_t("พิมพ์ /y เพื่อยืนยันผล", size="md", weight="bold", align="center"))
+    body.append(_t("ต้องการเปลี่ยนผล พิมพ์ s<รหัสผล> ใหม่", size="sm", color=TH["muted"], align="center"))
     return FlexSendMessage(
         alt_text=f"ตรวจผลรอบ {pair_no}: {title}",
-        contents=_bubble(_header("ตรวจผลก่อนยืนยัน", f"รอบที่ {pair_no}", tone), body),
+        contents=_bubble(_header("ตรวจผลก่อนยืนยัน", f"รอบ {pair_no}", tone), body),
     )
 
 
@@ -1268,50 +1277,55 @@ def flex_settle(pair_no, rows, footer_text,
         return f"+{fmt(n)}" if n > 0 else (f"-{fmt(abs(n))}" if n < 0 else "0")
 
     has_balance = bool(balance_map)
-    result_text = (footer_text or "").replace("ผล:", "").strip()
+    result_text = (footer_text or "").replace("ผล:", "").strip() or "-"
 
-    body = [_box([_pill(result_text or "-", "green", size="sm")], layout="horizontal",
-                 justifyContent="center")]
+    body = []
+    if camp_name:
+        body.append(_camp_title(camp_name))
+    body.append(_box([_t("ผลออก", size="sm", color=TH["muted"], flex=0, gravity="center"),
+                      _t(result_text, size="md", weight="bold", color=TH["green"], align="end", flex=1)],
+                     layout="horizontal", backgroundColor=TH["green_bg"], cornerRadius="10px", paddingAll="12px"))
 
     if rows:
-        cols = [_t("ผู้เล่น", size="xxs", color=TH["faint"], flex=5),
-                _t("เล่น", size="xxs", color=TH["faint"], align="end", flex=3),
-                _t("ได้เสีย", size="xxs", color=TH["faint"], align="end", flex=3)]
+        cols = [_t("ผู้เล่น", size="xs", weight="bold", color=TH["muted"], flex=5),
+                _t("เล่น", size="xs", weight="bold", color=TH["muted"], align="end", flex=3),
+                _t("ได้เสีย", size="xs", weight="bold", color=TH["muted"], align="end", flex=3)]
         if has_balance:
-            cols.append(_t("คงเหลือ", size="xxs", color=TH["faint"], align="end", flex=3))
-        body += [_box(cols, layout="horizontal", margin="lg"), _sep("sm")]
+            cols.append(_t("คงเหลือ", size="xs", weight="bold", color=TH["muted"], align="end", flex=4))
+        table = [_box(cols, layout="horizontal", backgroundColor=TH["page"], cornerRadius="6px", paddingAll="8px")]
         for r in rows:
             pl = (r.get("payout", 0) or 0) - (r.get("stake", 0) or 0)
             pl_color = TH["green"] if pl > 0 else (TH["red"] if pl < 0 else TH["muted"])
-            line = [_t(r.get("name") or "-", size="xs", flex=5, wrap=False),
-                    _t(fmt(r.get("stake", 0)), size="xs", color=TH["muted"], align="end", flex=3),
-                    _t(_signed(pl), size="xs", weight="bold", color=pl_color, align="end", flex=3)]
+            line = [_t(r.get("name") or "-", size="sm", flex=5, wrap=False),
+                    _t(fmt(r.get("stake", 0)), size="sm", color=TH["sub"], align="end", flex=3),
+                    _t(_signed(pl), size="sm", weight="bold", color=pl_color, align="end", flex=3)]
             if has_balance:
-                line.append(_t(fmt(balance_map.get(r["uid"], 0)), size="xs", align="end", flex=3))
-            body.append(_box(line, layout="horizontal", margin="sm"))
+                line.append(_t(fmt(balance_map.get(r["uid"], 0)), size="sm", align="end", flex=4))
+            table.append(_box(line, layout="horizontal", paddingStart="8px", paddingEnd="8px",
+                              paddingTop="6px", paddingBottom="6px"))
+            table.append(_sep("none"))
+        table.pop()
+        body.append(_box(table))
     else:
-        body.append(_t("ไม่มีผู้เล่นในรอบนี้", size="sm", color=TH["faint"], align="center", margin="lg"))
+        body.append(_t("ไม่มีผู้เล่นในรอบนี้", size="sm", color=TH["faint"], align="center"))
 
     if show_profit:
-        body.append(_sep("lg"))
-        body.append(_kv("กำไรรอบนี้", _signed(profit_value),
-                        TH["green"] if profit_value >= 0 else TH["red"], bold=True))
+        prof = [_kv("กำไรรอบนี้", _signed(profit_value), TH["green"] if profit_value >= 0 else TH["red"])]
         if accum:
-            body.append(_kv("สะสมกำไร / ขาดทุน", f"{fmt(accum['profit_sum'])} / {fmt(accum['loss_sum'])}"))
-            body.append(_kv("สุทธิสะสม", _signed(accum["net"]),
-                            TH["green"] if accum["net"] >= 0 else TH["red"], bold=True))
+            prof += [_kv("สะสมกำไร / ขาดทุน", f"{fmt(accum['profit_sum'])} / {fmt(accum['loss_sum'])}"),
+                     _kv("สุทธิสะสม", _signed(accum["net"]), TH["green"] if accum["net"] >= 0 else TH["red"])]
+        body.append(_box(prof, backgroundColor=TH["page"], cornerRadius="10px", paddingAll="12px"))
 
-    sub = f"ค่าย {camp_name}" if camp_name else None
     return FlexSendMessage(
         alt_text=f"สรุปผล รอบ {pair_no}",
-        contents=_bubble(_header(f"สรุปผลรอบที่ {pair_no}", sub, "green"), body,
-                         _hint_footer([f"{len(rows or [])} ผู้เล่น  •  พิมพ์ C เพื่อดูยอดคงเหลือ"])),
+        contents=_bubble(_header("📊 สรุปผล", f"รอบ {pair_no}", "green"), body,
+                         _note_footer(f"{len(rows or [])} ผู้เล่น  •  พิมพ์ C เพื่อดูยอดคงเหลือ")),
     )
 
 
 # ---------- สกอบั้งไฟ (10 รอบล่าสุด) ----------
 _SCORE_MAP = {
-    "ส": ("สูง", "blue"), "ต": ("ต่ำ", "red"), "ก": ("กลาง", "amber"),
+    "ส": ("สูง ✅", "blue"), "ต": ("ต่ำ ✅", "red"), "ก": ("กลาง", "amber"),
     "จ": ("จาว", "green"), "ม": ("เสมอ", "green"),
     "ตจ": ("ต่ำเสมอ", "purple"), "ตส": ("สูงเสมอ", "purple"),
 }
@@ -1324,26 +1338,27 @@ def flex_scoreboard(history_list):
             latest[h["round"]] = h
     recent = [latest[r] for r in sorted(latest)][-10:]
 
-    body = []
     if recent:
-        body += [_box([_t("รอบ", size="xxs", color=TH["faint"], flex=2),
-                       _t("ค่าย", size="xxs", color=TH["faint"], flex=6),
-                       _t("ผล", size="xxs", color=TH["faint"], align="end", flex=4)],
-                      layout="horizontal"), _sep("sm")]
+        table = [_box([_t("รอบ", size="xs", weight="bold", color=TH["muted"], flex=2),
+                       _t("ค่าย", size="xs", weight="bold", color=TH["muted"], flex=6),
+                       _t("ผล", size="xs", weight="bold", color=TH["muted"], align="end", flex=4)],
+                      layout="horizontal", backgroundColor=TH["page"], cornerRadius="6px", paddingAll="8px")]
         for h in recent:
-            code = h.get("code") or "?"
-            label, tone = _SCORE_MAP.get(code, (code, "gray"))
-            body.append(_box([
-                _t(str(h["round"]), size="xs", color=TH["muted"], flex=2, gravity="center"),
+            label, tone = _SCORE_MAP.get(h.get("code") or "?", (h.get("code") or "?", "gray"))
+            table.append(_box([
+                _t(str(h["round"]), size="sm", color=TH["muted"], flex=2, gravity="center"),
                 _t(h.get("camp") or "-", size="sm", flex=6, wrap=False, gravity="center"),
                 _box([_pill(label, tone)], layout="horizontal", justifyContent="flex-end", flex=4),
-            ], layout="horizontal", alignItems="center", margin="md"))
+            ], layout="horizontal", alignItems="center", paddingAll="8px"))
+            table.append(_sep("none"))
+        table.pop()
+        body = [_box(table)]
     else:
-        body.append(_t("ยังไม่มีประวัติ", size="sm", color=TH["faint"], align="center"))
+        body = [_t("ยังไม่มีประวัติ", size="sm", color=TH["faint"], align="center")]
 
     return FlexSendMessage(
         alt_text="สกอบั้งไฟล่าสุด",
-        contents=_bubble(_header("สกอบั้งไฟ", "10 รอบล่าสุด", "blue"), body),
+        contents=_bubble(_header("📜 สกอบั้งไฟ", "10 รอบล่าสุด", "blue"), body),
     )
 
 
@@ -1353,31 +1368,29 @@ def flex_summary(st, event=None):
     hi = [b for b in bets if b["side"] == "HI"]
     lo = [b for b in bets if b["side"] == "LO"]
 
-    def _side_total(side, lst):
-        fg, bg = TONE[SIDE_TONE[side]]
-        return _box([
-            _t(f"{SIDE_TH[side]} ({len(lst)} บิล)", size="xs", color=fg, align="center"),
-            _t(fmt(sum(b["amount"] for b in lst)), size="xl", weight="bold", color=fg, align="center",
-               wrap=False, adjustMode="shrink-to-fit"),
-        ], backgroundColor=bg, cornerRadius="10px", paddingAll="10px", flex=1)
-
-    body = [_box([_side_total("HI", hi), _side_total("LO", lo)], layout="horizontal", spacing="sm")]
-
+    body = [
+        _side_row(f"สูง • {len(hi)} บิล", fmt(sum(b["amount"] for b in hi)), "blue", size="lg"),
+        _side_row(f"ต่ำ • {len(lo)} บิล", fmt(sum(b["amount"] for b in lo)), "red", size="lg"),
+    ]
     if bets:
-        body.append(_sep("lg"))
+        table = []
         for b in sorted(bets, key=lambda x: (x["side"], -x["amount"])):
             fg = TONE[SIDE_TONE[b["side"]]][0]
-            body.append(_box([
+            table.append(_box([
                 _t(b["name"], size="sm", flex=6, wrap=False),
                 _t(SIDE_TH[b["side"]], size="sm", color=fg, weight="bold", align="center", flex=2),
                 _t(fmt(b["amount"]), size="sm", weight="bold", align="end", flex=3),
-            ], layout="horizontal", margin="md"))
+            ], layout="horizontal", paddingTop="6px", paddingBottom="6px"))
+            table.append(_sep("none"))
+        table.pop()
+        body.append(_box(table, margin="md"))
     else:
-        body.append(_t("ยังไม่มีบิล", size="sm", color=TH["faint"], align="center", margin="lg"))
+        body.append(_t("ยังไม่มีบิล", size="sm", color=TH["faint"], align="center"))
 
     return FlexSendMessage(
         alt_text=f"สรุปการแทง รอบ {st['pairNo']} ({len(bets)} บิล)",
-        contents=_bubble(_header(f"สรุปบิลรอบที่ {st['pairNo']}", f"รวม {len(bets)} บิล", "gray"), body),
+        contents=_bubble(_header("📋 สรุปบิล", f"รอบ {st['pairNo']}", "gray"), body,
+                         _note_footer(f"รวมทั้งหมด {len(bets)} บิล")),
     )
 
 
