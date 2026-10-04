@@ -543,8 +543,8 @@ ADMIN_IDS = [s.strip() for s in os.getenv(
     "ADMIN_IDS", "U8e996c055ed55573b042f8119bcc5844,U3ae8e637f4da0559d906847535e35fbb,U24298c1e9f43986904ee6d3e3d10267d,Ua139e5d2bcd9606877829acc2fdcd1ec,Ua4dfc588cd253940e13c4e81188d69e8,U458603076cc4dee45ff1273e1f634ef2"
 ).split(",") if s.strip()]
 
-BACKOFFICE_GROUP_IDS = {  # กลุ่มหลังบ้าน (รับสรุปพร้อมกำไรสุทธิ)
-    "Cab9fd7703ec00d036fa8ee94e4a59b80",
+BACKOFFICE_GROUP_IDS = {  # กลุ่มหลังบ้าน (รับสรุปพร้อมกำไรสุทธิ) — ตั้งใน env คั่นด้วย ,
+    s.strip() for s in os.getenv("BACKOFFICE_GROUP_IDS", "Cab9fd7703ec00d036fa8ee94e4a59b80").split(",") if s.strip()
 }
 
 BASE_URL = os.getenv("BASE_URL", "https://example.ngrok-free.app")
@@ -973,446 +973,435 @@ def format_user_table(data):
 
 
 # ====== FLEX ======
-def flex_open(pair_no, note=None):
-    body_contents = [
-        {"type": "text", "text": "🎯 เริ่มแทงได้ 🎯", "weight": "bold", "size": "xxl", "align": "center", "color": "#22C55E"},
-        {"type": "text", "text": "บอทไม่จับ ไม่ได้เสีย ทุกกรณี •", "size": "md", "align": "center", "color": "#EF4444"},
-        {"type": "separator", "margin": "lg", "color": "#4B5563"},
-        {"type": "text", "text": f"รอบที่ {pair_no}", "align": "center", "size": "lg", "weight": "bold", "color": "#FFFFFF"},
-        {"type": "text", "text": f"รอแอดมินออกราคาสักครู่", "align": "center", "size": "lg", "weight": "bold", "color": "#DB0A0A"},
-    ]
-    if note:
-        body_contents += [
-            {"type": "separator", "margin": "lg", "color": "#4B5563"},
-            {"type": "text", "text": f"ชื่อค่าย: {note}", "size": "md", "wrap": True, "align": "center", "color": "#FACC15"},
-        ]
+# ====================================================================
+# ====== THEME: Light & Clean — การ์ดทุกใบใช้สี/รูปแบบชุดเดียวกัน ======
+# ====================================================================
+# ไล่ / สูง = ฟ้า   •   ยั้ง / ต่ำ = แดง   •   เปิด = เขียว   •   พัก = ส้ม   •   ปิด = แดง
+TH = {
+    "bg": "#FFFFFF", "page": "#F5F7FA", "line": "#E5E7EB",
+    "text": "#1F2937", "muted": "#6B7280", "faint": "#9CA3AF",
+    "green": "#16A34A", "green_bg": "#ECFDF3",
+    "blue": "#2563EB", "blue_bg": "#EFF6FF",
+    "red": "#DC2626", "red_bg": "#FEF2F2",
+    "amber": "#D97706", "amber_bg": "#FFFBEB",
+    "purple": "#7C3AED", "purple_bg": "#F5F3FF",
+    "gray": "#6B7280", "gray_bg": "#F3F4F6",
+}
+TONE = {
+    "green": (TH["green"], TH["green_bg"]),
+    "blue": (TH["blue"], TH["blue_bg"]),
+    "red": (TH["red"], TH["red_bg"]),
+    "amber": (TH["amber"], TH["amber_bg"]),
+    "purple": (TH["purple"], TH["purple_bg"]),
+    "gray": (TH["gray"], TH["gray_bg"]),
+}
+SIDE_TONE = {"HI": "blue", "LO": "red"}
+SIDE_TH = {"HI": "สูง", "LO": "ต่ำ"}
 
+
+def _t(text, size="sm", color=None, weight=None, align=None, wrap=True, flex=None, margin=None, **kw):
+    d = {"type": "text", "text": str(text if text not in (None, "") else " "), "size": size,
+         "color": color or TH["text"], "wrap": wrap}
+    if weight: d["weight"] = weight
+    if align: d["align"] = align
+    if flex is not None: d["flex"] = flex
+    if margin: d["margin"] = margin
+    d.update(kw)
+    return d
+
+
+def _box(contents, layout="vertical", **kw):
+    d = {"type": "box", "layout": layout, "contents": contents}
+    d.update(kw)
+    return d
+
+
+def _sep(margin="md"):
+    return {"type": "separator", "margin": margin, "color": TH["line"]}
+
+
+def _header(title, subtitle=None, tone="green"):
+    fg, bg = TONE[tone]
+    rows = [_box([
+        _box([], width="8px", height="8px", cornerRadius="8px", backgroundColor=fg),
+        _t(title, size="lg", weight="bold", color=fg, margin="md", flex=1),
+    ], layout="horizontal", alignItems="center")]
+    if subtitle:
+        rows.append(_t(subtitle, size="xs", color=TH["muted"], margin="xs"))
+    return _box(rows, backgroundColor=bg, paddingAll="14px", paddingStart="16px")
+
+
+def _kv(label, value, value_color=None, bold=False, size="sm"):
+    return _box([
+        _t(label, size=size, color=TH["muted"], flex=4),
+        _t(value, size=size, color=value_color or TH["text"], weight="bold" if bold else None,
+           align="end", flex=6),
+    ], layout="horizontal", margin="sm")
+
+
+def _pill(text, tone="gray", size="xs"):
+    fg, bg = TONE[tone]
+    return _box([_t(text, size=size, color=fg, weight="bold", align="center", wrap=False)],
+                backgroundColor=bg, cornerRadius="20px", paddingTop="3px", paddingBottom="3px",
+                paddingStart="10px", paddingEnd="10px", flex=0)
+
+
+def _hint_footer(lines):
+    return _box([_t(x, size="xxs", color=TH["faint"], align="center") for x in lines],
+                backgroundColor=TH["page"], paddingAll="10px", spacing="xs")
+
+
+def _bubble(header, body, footer=None, size="mega"):
+    b = {
+        "type": "bubble", "size": size,
+        "header": header,
+        "body": _box(body, backgroundColor=TH["bg"], paddingAll="16px", spacing="sm"),
+        "styles": {"header": {"backgroundColor": TH["bg"]}, "body": {"backgroundColor": TH["bg"]}},
+    }
+    if footer:
+        b["footer"] = footer
+        b["styles"]["footer"] = {"backgroundColor": TH["page"]}
+    return b
+
+
+HINTS_PLAYER = ["ยกเลิกบิล พิมพ์ X  •  ดูยอดคงเหลือ พิมพ์ C", "บอทไม่จับ ไม่ได้เสีย ทุกกรณี"]
+
+
+# ---------- เปิดรอบ (ยังไม่มีราคา) ----------
+def flex_open(pair_no, note=None):
+    body = []
+    if note:
+        body.append(_kv("ค่าย", note, bold=True))
+        body.append(_sep())
+    body.append(_t("เปิดรับแทงแล้ว", size="xl", weight="bold", color=TH["green"], align="center", margin="md"))
+    body.append(_t("รอแอดมินออกราคาสักครู่", size="sm", color=TH["muted"], align="center"))
     return FlexSendMessage(
         alt_text=f"เริ่มแทงได้ รอบที่ {pair_no}",
-        contents={
-            "type": "bubble",
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "paddingAll": "0px",
-                "contents": [
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#22C55E",
-                        "cornerRadius": "20px",
-                        "paddingAll": "3px",
-                        "contents": [
-                            {
-                                "type": "box",
-                                "layout": "vertical",
-                                "backgroundColor": "#111827",
-                                "cornerRadius": "16px",
-                                "paddingAll": "3px",
-                                "contents": [
-                                    {
-                                        "type": "box",
-                                        "layout": "vertical",
-                                        "backgroundColor": "#1F2937",
-                                        "cornerRadius": "12px",
-                                        "paddingAll": "20px",
-                                        "contents": body_contents
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            }
-        }
+        contents=_bubble(_header("เปิดรอบ", f"รอบที่ {pair_no}", "green"), body, _hint_footer(HINTS_PLAYER)),
     )
 
 
-
+# ---------- กลับมาเปิดรอบ ----------
 def flex_resume(pair_no: int, camp: str):
+    body = [
+        _kv("ค่าย", camp, bold=True),
+        _sep(),
+        _t("เปิดให้แทงต่อได้แล้ว", size="xl", weight="bold", color=TH["green"], align="center", margin="md"),
+        _t("ฮ่ำมันเข้าไปคักๆ หมานๆนะสมาชิก", size="sm", color=TH["muted"], align="center"),
+    ]
     return FlexSendMessage(
         alt_text=f"กลับมาเปิดรอบ {pair_no}",
-        contents={
-            "type": "bubble",
-            "styles": {"body": {"backgroundColor": "#0B1220"}},
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "paddingAll": "14px",
-                "spacing": "12px",
-                "contents": [
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#16A34A",
-                        "cornerRadius": "12px",
-                        "paddingAll": "12px",
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": "เปิดให้เล่นอีกรอบ!!",
-                                "weight": "bold",
-                                "size": "lg",
-                                "align": "center",
-                                "color": "#FFFFFF"
-                            },
-                            {
-                                "type": "text",
-                                "text": f"รอบที่ {pair_no}",
-                                "size": "sm",
-                                "align": "center",
-                                "color": "#E5E7EB"
-                            }
-                        ]
-                    },
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#111827",
-                        "cornerRadius": "12px",
-                        "paddingAll": "12px",
-                        "spacing": "8px",
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": f"ค่าย: {camp}",
-                                "size": "md",
-                                "weight": "bold",
-                                "color": "#FACC15",
-                                "wrap": True
-                            },
-                            {"type": "separator", "color": "#334155"},
-                            {
-                                "type": "text",
-                                "text": "ฮ่ำมันเข้าไปคักๆ หมานๆนะสมาชิก",
-                                "size": "sm",
-                                "color": "#CBD5E1",
-                                "wrap": True
-                            },
-                            {
-                                "type": "text",
-                                "text": "ยกเลิกบิลพิมพ์ X • ดูบัตรสมาชิกพิมพ์ C",
-                                "size": "xs",
-                                "color": "#94A3B8",
-                                "wrap": True
-                            }
-                        ]
-                    }
-                ]
-            }
-        }
+        contents=_bubble(_header("เปิดรับแทงอีกครั้ง", f"รอบที่ {pair_no}", "green"), body, _hint_footer(HINTS_PLAYER)),
     )
+
+
+# ---------- ออกราคา ----------
+def _price_box(label, price, tone):
+    fg, bg = TONE[tone]
+    return _box([
+        _t(label, size="sm", color=fg, weight="bold", align="center"),
+        _t(price, size="xxl", color=fg, weight="bold", align="center", margin="xs",
+           wrap=False, adjustMode="shrink-to-fit"),
+    ], backgroundColor=bg, cornerRadius="12px", paddingAll="12px", flex=1)
 
 
 def flex_open_with_prices(pair_no, camp, hi_min, hi_max, lo_min, lo_max):
     hi_txt = f"{hi_min}-{hi_max}" if hi_min is not None and hi_max is not None else "-"
     lo_txt = f"{lo_min}-{lo_max}" if lo_min is not None and lo_max is not None else "-"
-
+    rules = [
+        f"แทงขั้นต่ำ {MIN_BET} - {fmt(MAX_BET)} บาท/คน/รอบ",
+        f"รับรวมต่อฝั่ง: สูง {fmt(SIDE_CAP['HI'])} • ต่ำ {fmt(SIDE_CAP['LO'])}",
+        f"ชนะจ่าย 1 : {PROFIT_RATE:.2f}  •  ออกกลางหัก {int(MIDDLE_FEE*100)}%",
+        "ซุ แตก คาฐาน หาย = จาว",
+        "ราคาแอดมินกำหนดตามความเหมาะสม",
+        "ออกราคาหลังปิด ถือว่าจาวทุกกรณี",
+    ]
+    body = [
+        _kv("ค่าย", camp, bold=True, size="md"),
+        _box([_price_box("ไล่ (สูง)", hi_txt, "blue"), _price_box("ยั้ง (ต่ำ)", lo_txt, "red")],
+             layout="horizontal", spacing="sm", margin="md"),
+        _sep("lg"),
+        _box([_box([_t("•", size="xs", color=TH["faint"], flex=0),
+                    _t(r, size="xs", color=TH["muted"], flex=1, margin="sm")], layout="horizontal")
+              for r in rules], spacing="xs", margin="md"),
+        _box([_t("หน้าฐานราคารูดผิดปกติ แอดมินแจ้งยกเลิกได้", size="xxs", color=TH["amber"], align="center")],
+             backgroundColor=TH["amber_bg"], cornerRadius="8px", paddingAll="8px", margin="md"),
+    ]
     return FlexSendMessage(
-        alt_text=f"เริ่มแทงได้ รอบที่ {pair_no}",
-        contents={
-            "type": "bubble",
-            "styles": {"body": {"backgroundColor": "#D1FAE5"}},
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "sm",
-                "paddingAll": "14px",
-                "contents": [
-                    {"type": "text", "text": "🎯 ราคามาแล้วว!! 🎯", "weight": "bold", "size": "xl", "align": "center", "color": "#16A34A"},
-                    {"type": "text", "text": "บอทไม่จับ ไม่ได้เสีย ทุกกรณี", "size": "sm", "align": "center", "color": "#EF4444"},
-                    {"type": "separator", "margin": "md"},
-                    {"type": "text", "text": f"🟢🚀ชื่อค่าย :  {camp}", "size": "md", "weight": "bold", "wrap": True},
-                    {"type": "text", "text": f"🟢ไล่ราคานี้🟢{hi_txt}🟢", "size": "lg", "weight": "bold"},
-                    {"type": "separator", "margin": "md"},
-                    {"type": "text", "text": "🏡 ราคาบั้งไฟแอดมินกำหนดตามความเหมาะสม", "size": "sm", "wrap": True},
-                    {"type": "text", "text": "🏡 ออกราคาบั้งไฟหลังปิด ถือว่าจาวทุกกรณี", "size": "sm", "wrap": True},
-                    {"type": "text", "text": f"👉 แทงขั้นต่ำ {MIN_BET} - {fmt(MAX_BET)} บาท/คน/รอบ", "size": "sm"},
-                    {"type": "text", "text": f"👉 รวมต่อฝั่ง/รอบ: สูง {fmt(SIDE_CAP['HI'])} • ต่ำ {fmt(SIDE_CAP['LO'])}", "size": "sm"},
-                    {"type": "text", "text": f"👉 อัตราจ่ายชนะ 1 : {PROFIT_RATE:.2f}", "size": "sm"},
-                    {"type": "text", "text": f"👉 ออกกลางหัก {int(MIDDLE_FEE*100)}%", "size": "sm"},
-                    {"type": "text", "text": "👉 ซุแตกคาถาน,หาย = จาว", "size": "sm"},
-                    {"type": "separator", "margin": "md"},
-                    {"type": "text", "text": f"🟢🚀ชื่อค่าย :  {camp}", "size": "md", "weight": "bold", "wrap": True},
-                    {"type": "text", "text": f"🔴ยั้งราคานี้🔴{lo_txt}🔴", "size": "lg", "weight": "bold"},
-                    {"type": "separator", "margin": "md"},
-                    {"type": "text", "text": "📢 ยกเลิกการแทง กด X", "size": "sm"},
-                    {"type": "text", "text": "📢 ดูยอดหน้าบัญชีตัวเอง กด C", "size": "sm"},
-                    {"type": "text", "text": "‼️กรณีหน้าฐานราคารูดผิดปกติแอดมินสามารถแจ้งยกเลิกได้‼", "size": "xs", "wrap": True},
-                ]
-            }
-        }
+        alt_text=f"ราคามาแล้ว รอบที่ {pair_no} • {camp} ไล่ {hi_txt} ยั้ง {lo_txt}",
+        contents=_bubble(_header("ราคามาแล้ว", f"รอบที่ {pair_no}", "green"), body, _hint_footer(HINTS_PLAYER)),
     )
 
+
+# ---------- ปิดรอบ ----------
 def flex_close_notice(pair_no):
-    # การ์ดแจ้งหยุดแทง (ปิดรอบ) โทนเดียวกับตัวอย่าง
+    body = [
+        _t("หยุดแทง", size="xxl", weight="bold", color=TH["red"], align="center", margin="sm"),
+        _t("ระบบปิดรับบิลแล้ว รอสรุปผล", size="sm", color=TH["muted"], align="center"),
+    ]
     return FlexSendMessage(
         alt_text=f"ปิดรอบ #{pair_no}",
-        contents={
-            "type": "bubble",
-            "styles": {"body": {"backgroundColor": "#E5F0FF"}},
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "md",
-                "paddingAll": "16px",
-                "contents": [
-                    {"type": "text", "text": f"ปิดรอบ #{pair_no}", "weight": "bold",
-                     "size": "xl", "align": "center", "color": "#1F2937"},
-                    {"type": "box", "layout": "vertical", "backgroundColor": "#111827",
-                     "cornerRadius": "12px", "paddingAll": "14px", "contents": [
-                         {"type": "text", "text": "หยุดแทง", "weight": "bold",
-                          "size": "xxl", "align": "center", "color": "#EF4444"},
-                         {"type": "text", "text": "บอทไม่จับ ไม่ได้เสีย ทุกกรณี",
-                          "size": "md", "align": "center", "color": "#FDE68A"}
-                     ]},
-                    {"type": "text",
-                     "text": "ระบบปิดรับบิลแล้ว กรุณารอสรุปผล/ประกาศราคาถัดไป",
-                     "size": "sm", "align": "center", "wrap": True, "color": "#374151"}
-                ]
-            }
-        }
+        contents=_bubble(_header("ปิดรับแทง", f"รอบที่ {pair_no}", "red"), body,
+                         _hint_footer(["บอทไม่จับ ไม่ได้เสีย ทุกกรณี"])),
     )
 
+
+# ---------- พักรอบ ----------
 def flex_pause_notice(pair_no: int, camp: str):
-    """การ์ดแจ้ง 'พักรอบชั่วคราว' พร้อมชื่อค่าย"""
-    if not camp:
-        camp = "ไม่ระบุค่าย"
+    camp = camp or "ไม่ระบุค่าย"
+    body = [
+        _kv("ค่าย", camp, bold=True),
+        _sep(),
+        _t("หยุดแทงชั่วคราว", size="xl", weight="bold", color=TH["amber"], align="center", margin="md"),
+        _t("ระหว่างนี้แทงหรือยกเลิกบิลไม่ได้\nรอแอดมินเปิดอีกครั้ง", size="sm", color=TH["muted"], align="center"),
+    ]
     return FlexSendMessage(
         alt_text=f"พักรอบชั่วคราว #{pair_no}",
-        contents={
-            "type": "bubble",
-            "styles": {"body": {"backgroundColor": "#FFF7ED"}},
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "spacing": "md",
-                "paddingAll": "16px",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": f"หยุดแทงชั่วคราว #{pair_no}",
-                        "weight": "bold",
-                        "size": "xl",
-                        "align": "center",
-                        "color": "#1F2937"
-                    },
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#111827",
-                        "cornerRadius": "12px",
-                        "paddingAll": "14px",
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": "⏸️ ปิดรับบิลชั่วคราว",
-                                "weight": "bold",
-                                "size": "lg",
-                                "align": "center",
-                                "color": "#F59E0B"
-                            },
-                            {
-                                "type": "text",
-                                "text": f"ค่าย {camp} รอแอดมินเปิดอีกรอบ",
-                                "size": "sm",
-                                "align": "center",
-                                "color": "#FDE68A"
-                            }
-                        ]
-                    },
-                    {
-                        "type": "text",
-                        "text": "หยุดแล้วจะไม่สามารถแทงหรือยกเลิกได้ รอแอดมินเปิดอีกรอบ",
-                        "size": "xs",
-                        "align": "center",
-                        "wrap": True,
-                        "color": "#6B7280"
-                    }
-                ]
-            }
-        }
+        contents=_bubble(_header("พักรอบ", f"รอบที่ {pair_no}", "amber"), body),
     )
 
+
+# ---------- บัตรสมาชิก (C) ----------
+def _avatar(user):
+    pic = user.get("pictureUrl")
+    if pic:
+        return _box([{"type": "image", "url": pic, "size": "full", "aspectMode": "cover", "aspectRatio": "1:1"}],
+                    width="52px", height="52px", cornerRadius="26px", flex=0)
+    initial = (user.get("name") or "?").strip()[:1] or "?"
+    return _box([_t(initial, size="lg", weight="bold", color=TH["green"], align="center", gravity="center")],
+                width="52px", height="52px", cornerRadius="26px", backgroundColor=TH["green_bg"],
+                justifyContent="center", flex=0)
 
 
 def flex_customer_card(st, user):
-    """
-    การ์ดสมาชิกแบบเรียบง่าย โทนสว่าง เหมือนตัวอย่างในรูป
-    แสดง: รูป • ID • ชื่อ • เครดิตคงเหลือ • รายการเล่น (ถ้ามี)
-    """
-    # กันกรณีเรียกการ์ดก่อนผู้ใช้ ADD / ไม่มีข้อมูลใน users
     if not user:
         return TextSendMessage(text="กรุณาพิมพ์ add เพื่อรับไอดีก่อน")
 
-    uid = user["uid"]
-    cid = user["cid"]
-    name = user.get("name", "ผู้เล่น")
-    picture = user.get("pictureUrl") or "https://via.placeholder.com/48"
-    credit_total = int(user.get("credit", 0) or 0)
+    credit = int(user.get("credit", 0) or 0)
+    bet = get_user_bet(st, user["uid"])
 
-    bet = get_user_bet(st, uid)
-    have_bet = bet is not None
-    side_th = "สูง" if (bet and bet["side"] == "HI") else ("ต่ำ" if bet else "")
-    stake_used = int(bet["amount"]) if bet else 0
+    top = _box([
+        _avatar(user),
+        _box([
+            _t(user.get("name", "ผู้เล่น"), size="md", weight="bold", maxLines=2),
+            _box([_pill(f"ID {user['cid']}", "green")], layout="horizontal", margin="xs"),
+        ], margin="md", flex=1, justifyContent="center"),
+    ], layout="horizontal", alignItems="center")
 
-    # สีตามฝั่ง
-    side_color = "#3B82F6" if side_th == "สูง" else "#EF4444"
+    credit_box = _box([
+        _t("เครดิตคงเหลือ", size="xs", color=TH["muted"], align="center"),
+        _t(f"{fmt(credit)} ฿", size="3xl", weight="bold", color=TH["text"], align="center",
+           wrap=False, adjustMode="shrink-to-fit"),
+    ], backgroundColor=TH["page"], cornerRadius="12px", paddingAll="12px", margin="lg")
 
-    # แถบสถานะ (progress look) ความยาวตามสัดส่วน (ปรับได้)
-    # หมายเหตุ: Flex ไม่มี progress จริง ๆ ใช้กล่องสองชั้นเลียนแบบ
-    max_bar = max(stake_used, 1)
-    filled_flex = 8 if have_bet else 0
-    empty_flex = (12 - filled_flex) if have_bet else 12
-
-    # ส่วนหัว: โปรไฟล์ + ID/ชื่อ + เครดิตคงเหลือ
-    header = {
-        "type": "box", "layout": "horizontal", "spacing": "12px",
-        "contents": [
-            {
-                "type": "image", "url": picture, "size": "48px",
-                "aspectMode": "cover", "aspectRatio": "1:1",
-                "cornerRadius": "10px"
-            },
-            {
-                "type": "box", "layout": "vertical", "flex": 7, "spacing": "2px",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": f"ID : {cid} {name}",
-                        "weight": "bold",
-                        "size": "md",
-                        "color": "#111827",
-                        "wrap": True,
-                        "maxLines": 2
-                    },
-                    {
-                        "type": "text",
-                        "text": f"คงเหลือ {fmt(credit_total)} บ.",
-                        "size": "sm",
-                        "color": "#6B7280"
-                    }
-                ]
-            }
-        ]
-    }
-
-    # กล่อง "รายการเล่น" ถ้ามีบิล
-    bet_block = {
-        "type": "box", "layout": "vertical", "spacing": "6px",
-        "contents": [
-            # แถวหัวข้อ + จำนวน
-            {
-                "type": "box", "layout": "horizontal", "contents": [
-                    {
-                        "type": "text",
-                        "text": side_th or "ยังไม่ได้เดิมพัน",
-                        "weight": "bold",
-                        "size": "sm",
-                        "color": "#111827",
-                        "flex": 7
-                    },
-                    {
-                        "type": "text",
-                        "text": f"{fmt(stake_used)} บ." if have_bet else "",
-                        "size": "sm",
-                        "align": "end",
-                        "color": "#111827",
-                        "flex": 5
-                    }
-                ]
-            },
-            # แถบสถานะ
-            {
-                "type": "box", "layout": "horizontal",
-                "backgroundColor": "#E5E7EB",
-                "height": "10px",
-                "cornerRadius": "10px",
-                "contents": [
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": side_color,
-                        "cornerRadius": "10px",
-                        "contents": [],
-                        "flex": filled_flex
-                    },
-                    {"type": "filler", "flex": empty_flex}
-                ]
-            },
-            # บรรทัดหักล่วงหน้า + เครดิตคงเหลือ (สไตล์ภาพตัวอย่าง)
-            {
-                "type": "box", "layout": "horizontal", "contents": [
-                    {
-                        "type": "text",
-                        "text": f"หักล่วงหน้า -{fmt(stake_used)}" if have_bet else "",
-                        "size": "xs",
-                        "color": "#6B7280",
-                        "flex": 7
-                    },
-                    {
-                        "type": "text",
-                        "text": f"คงเหลือ {fmt(credit_total)} บ.",
-                        "size": "xs",
-                        "color": "#6B7280",
-                        "align": "end",
-                        "flex": 5
-                    }
-                ]
-            }
-        ]
-    }
-
-    # ถ้าไม่มีบิล ให้แสดงบรรทัด “ยังไม่มีการเดิมพัน”
-    if not have_bet:
-        bet_block = {
-            "type": "text",
-            "text": "ยังไม่มีการเดิมพันในรอบนี้",
-            "size": "sm",
-            "color": "#6B7280",
-            "wrap": True
-        }
+    if bet:
+        tone = SIDE_TONE[bet["side"]]
+        fg, bg = TONE[tone]
+        bet_box = _box([
+            _t("บิลรอบนี้", size="xs", color=TH["muted"], flex=1, gravity="center"),
+            _pill(SIDE_TH[bet["side"]], tone, size="sm"),
+            _t(f"{fmt(bet['amount'])} ฿", size="md", weight="bold", color=fg, align="end", flex=0, margin="md"),
+        ], layout="horizontal", alignItems="center", margin="md", paddingAll="10px",
+            cornerRadius="10px", backgroundColor=bg)
+    else:
+        bet_box = _t("ยังไม่มีบิลในรอบนี้", size="xs", color=TH["faint"], align="center", margin="md")
 
     return FlexSendMessage(
-        alt_text=f"ID {cid} — การ์ดสมาชิก",
+        alt_text=f"ID {user['cid']} • เครดิต {fmt(credit)} บาท",
         contents={
-            "type": "bubble",
-            "size": "mega",
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "paddingAll": "12px",
-                "backgroundColor": "#F3F4F6",   # เทาอ่อนเหมือนแชตตัวอย่าง
-                "contents": [
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "cornerRadius": "16px",
-                        "paddingAll": "12px",
-                        "backgroundColor": "#FFFFFF",
-                        "contents": [
-                            header,
-                            {"type": "box", "layout": "vertical", "margin": "md", "spacing": "8px",
-                             "contents": [
-                                 {"type": "separator", "color": "#E5E7EB"},
-                                 bet_block
-                             ]}
-                        ]
-                    }
-                ]
-            }
-        }
+            "type": "bubble", "size": "kilo",
+            "body": _box([top, credit_box, bet_box], backgroundColor=TH["bg"], paddingAll="16px"),
+        },
     )
+
+
+# ---------- สมัครสำเร็จ ----------
+def flex_register_success(cid: int):
+    body = [
+        _t("ลงทะเบียนสำเร็จ", size="lg", weight="bold", color=TH["green"], align="center"),
+        _box([_t("ID ของคุณ", size="xs", color=TH["muted"], align="center"),
+              _t(str(cid), size="3xl", weight="bold", align="center")],
+             backgroundColor=TH["green_bg"], cornerRadius="12px", paddingAll="12px", margin="md"),
+        _t("พิมพ์ C เพื่อดูบัตรสมาชิก", size="xs", color=TH["faint"], align="center", margin="md"),
+    ]
+    return FlexSendMessage(
+        alt_text=f"ลงทะเบียนสำเร็จ ID {cid}",
+        contents={"type": "bubble", "size": "kilo",
+                  "body": _box(body, backgroundColor=TH["bg"], paddingAll="16px")},
+    )
+
+
+# ---------- ตัวอย่างผล (ก่อน /y) ----------
+_RESULT_META = {
+    "ส": ("สูงชนะ", "blue", f"ฝั่งสูงได้ 1 : {PROFIT_RATE:.2f}"),
+    "ต": ("ต่ำชนะ", "red", f"ฝั่งต่ำได้ 1 : {PROFIT_RATE:.2f}"),
+    "ก": ("กลาง", "amber", f"คืนเงินทั้งสองฝั่ง หัก {int(MIDDLE_FEE*100)}%"),
+    "จ": ("จาว", "green", "คืนเงินเต็มจำนวน"),
+    "ม": ("เสมอ-หาย", "green", "คืนเงินเต็มจำนวน"),
+    "ตจ": ("ต่ำเสมอ / สูงเสียเต็ม", "purple", f"ฝั่งต่ำคืน หัก {int(MIDDLE_FEE*100)}%"),
+    "ตส": ("ต่ำเสียเต็ม / สูงเสมอ", "purple", f"ฝั่งสูงคืน หัก {int(MIDDLE_FEE*100)}%"),
+}
+
+
+def flex_result_preview(code: str, pair_no: int):
+    title, tone, desc = _RESULT_META.get(code, ("รหัสผลไม่ถูกต้อง", "gray", "พิมพ์ s ตามด้วยรหัสผลใหม่"))
+    fg, bg = TONE[tone]
+    body = [
+        _box([_t(title, size="xl", weight="bold", color=fg, align="center"),
+              _t(desc, size="xs", color=TH["muted"], align="center", margin="xs")],
+             backgroundColor=bg, cornerRadius="12px", paddingAll="14px"),
+    ]
+    if code in _RESULT_META:
+        body.append(_t("พิมพ์ /y เพื่อยืนยันผล", size="sm", weight="bold", align="center", margin="lg"))
+    body.append(_t("ต้องการเปลี่ยนผล พิมพ์ s<รหัสผล> ใหม่", size="xs", color=TH["muted"], align="center"))
+    return FlexSendMessage(
+        alt_text=f"ตรวจผลรอบ {pair_no}: {title}",
+        contents=_bubble(_header("ตรวจผลก่อนยืนยัน", f"รอบที่ {pair_no}", tone), body),
+    )
+
+
+# ---------- สรุปผลรอบ ----------
+def flex_settle(pair_no, rows, footer_text,
+                show_profit=False, profit_value=0,
+                balance_map=None, accum=None, camp_name=None):
+    def _signed(n):
+        return f"+{fmt(n)}" if n > 0 else (f"-{fmt(abs(n))}" if n < 0 else "0")
+
+    has_balance = bool(balance_map)
+    result_text = (footer_text or "").replace("ผล:", "").strip()
+
+    body = [_box([_pill(result_text or "-", "green", size="sm")], layout="horizontal",
+                 justifyContent="center")]
+
+    if rows:
+        cols = [_t("ผู้เล่น", size="xxs", color=TH["faint"], flex=5),
+                _t("เล่น", size="xxs", color=TH["faint"], align="end", flex=3),
+                _t("ได้เสีย", size="xxs", color=TH["faint"], align="end", flex=3)]
+        if has_balance:
+            cols.append(_t("คงเหลือ", size="xxs", color=TH["faint"], align="end", flex=3))
+        body += [_box(cols, layout="horizontal", margin="lg"), _sep("sm")]
+        for r in rows:
+            pl = (r.get("payout", 0) or 0) - (r.get("stake", 0) or 0)
+            pl_color = TH["green"] if pl > 0 else (TH["red"] if pl < 0 else TH["muted"])
+            line = [_t(r.get("name") or "-", size="xs", flex=5, wrap=False),
+                    _t(fmt(r.get("stake", 0)), size="xs", color=TH["muted"], align="end", flex=3),
+                    _t(_signed(pl), size="xs", weight="bold", color=pl_color, align="end", flex=3)]
+            if has_balance:
+                line.append(_t(fmt(balance_map.get(r["uid"], 0)), size="xs", align="end", flex=3))
+            body.append(_box(line, layout="horizontal", margin="sm"))
+    else:
+        body.append(_t("ไม่มีผู้เล่นในรอบนี้", size="sm", color=TH["faint"], align="center", margin="lg"))
+
+    if show_profit:
+        body.append(_sep("lg"))
+        body.append(_kv("กำไรรอบนี้", _signed(profit_value),
+                        TH["green"] if profit_value >= 0 else TH["red"], bold=True))
+        if accum:
+            body.append(_kv("สะสมกำไร / ขาดทุน", f"{fmt(accum['profit_sum'])} / {fmt(accum['loss_sum'])}"))
+            body.append(_kv("สุทธิสะสม", _signed(accum["net"]),
+                            TH["green"] if accum["net"] >= 0 else TH["red"], bold=True))
+
+    sub = f"ค่าย {camp_name}" if camp_name else None
+    return FlexSendMessage(
+        alt_text=f"สรุปผล รอบ {pair_no}",
+        contents=_bubble(_header(f"สรุปผลรอบที่ {pair_no}", sub, "green"), body,
+                         _hint_footer([f"{len(rows or [])} ผู้เล่น  •  พิมพ์ C เพื่อดูยอดคงเหลือ"])),
+    )
+
+
+# ---------- สกอบั้งไฟ (10 รอบล่าสุด) ----------
+_SCORE_MAP = {
+    "ส": ("สูง", "blue"), "ต": ("ต่ำ", "red"), "ก": ("กลาง", "amber"),
+    "จ": ("จาว", "green"), "ม": ("เสมอ", "green"),
+    "ตจ": ("ต่ำเสมอ", "purple"), "ตส": ("สูงเสมอ", "purple"),
+}
+
+
+def flex_scoreboard(history_list):
+    latest = {}
+    for h in history_list or []:
+        if h.get("round") is not None:
+            latest[h["round"]] = h
+    recent = [latest[r] for r in sorted(latest)][-10:]
+
+    body = []
+    if recent:
+        body += [_box([_t("รอบ", size="xxs", color=TH["faint"], flex=2),
+                       _t("ค่าย", size="xxs", color=TH["faint"], flex=6),
+                       _t("ผล", size="xxs", color=TH["faint"], align="end", flex=4)],
+                      layout="horizontal"), _sep("sm")]
+        for h in recent:
+            code = h.get("code") or "?"
+            label, tone = _SCORE_MAP.get(code, (code, "gray"))
+            body.append(_box([
+                _t(str(h["round"]), size="xs", color=TH["muted"], flex=2, gravity="center"),
+                _t(h.get("camp") or "-", size="sm", flex=6, wrap=False, gravity="center"),
+                _box([_pill(label, tone)], layout="horizontal", justifyContent="flex-end", flex=4),
+            ], layout="horizontal", alignItems="center", margin="md"))
+    else:
+        body.append(_t("ยังไม่มีประวัติ", size="sm", color=TH["faint"], align="center"))
+
+    return FlexSendMessage(
+        alt_text="สกอบั้งไฟล่าสุด",
+        contents=_bubble(_header("สกอบั้งไฟ", "10 รอบล่าสุด", "blue"), body),
+    )
+
+
+# ---------- สรุปบิล (ตอนปิด/พักรอบ) ----------
+def flex_summary(st, event=None):
+    bets = list(st["bet_index"].values())
+    hi = [b for b in bets if b["side"] == "HI"]
+    lo = [b for b in bets if b["side"] == "LO"]
+
+    def _side_total(side, lst):
+        fg, bg = TONE[SIDE_TONE[side]]
+        return _box([
+            _t(f"{SIDE_TH[side]} ({len(lst)} บิล)", size="xs", color=fg, align="center"),
+            _t(fmt(sum(b["amount"] for b in lst)), size="xl", weight="bold", color=fg, align="center",
+               wrap=False, adjustMode="shrink-to-fit"),
+        ], backgroundColor=bg, cornerRadius="10px", paddingAll="10px", flex=1)
+
+    body = [_box([_side_total("HI", hi), _side_total("LO", lo)], layout="horizontal", spacing="sm")]
+
+    if bets:
+        body.append(_sep("lg"))
+        for b in sorted(bets, key=lambda x: (x["side"], -x["amount"])):
+            fg = TONE[SIDE_TONE[b["side"]]][0]
+            body.append(_box([
+                _t(b["name"], size="sm", flex=6, wrap=False),
+                _t(SIDE_TH[b["side"]], size="sm", color=fg, weight="bold", align="center", flex=2),
+                _t(fmt(b["amount"]), size="sm", weight="bold", align="end", flex=3),
+            ], layout="horizontal", margin="md"))
+    else:
+        body.append(_t("ยังไม่มีบิล", size="sm", color=TH["faint"], align="center", margin="lg"))
+
+    return FlexSendMessage(
+        alt_text=f"สรุปการแทง รอบ {st['pairNo']} ({len(bets)} บิล)",
+        contents=_bubble(_header(f"สรุปบิลรอบที่ {st['pairNo']}", f"รวม {len(bets)} บิล", "gray"), body),
+    )
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def text_bank():
     return TextSendMessage(
         text=(
-            "📌 CEO บั้งไฟน้อย\n\n"
-            "⚠️ บัญชีฝากเงิน\n\n"
-            "🏳️ 123456789   \n"
-            "💰 XXXX\n"
-            "💳 XXXX XXXXX\n\n"
+            "📌 เซิ้ง®บั้งไฟอิสาน V2\n\n"
+            "⚠️แจ้งเลขบัญชีฝาก⚠️\n\n"
+            "🏳️ 020253012700   \n"
+            "💰 ออมสิน\n"
+            "💳 วรรณวิไล ชาเมืองกูล\n\n"
             "📌 เพื่อป้องกันมิจฉาชีพ ชื่อผู้ฝาก-ถอน ต้องเป็นชื่อเดียวกันเท่านั้น⚠️\n"
             "📌 กด C ดูไอดีตัวเองส่งให้แอดมินได้เลย\n"
         )
@@ -1481,406 +1470,9 @@ def flex_backoffice_button(url: str, label: str = "เปิดหน้าฝ�
 
 
 
-def flex_result_preview(code: str, pair_no: int):
-    # ---- mapping สี/ไอคอน/คำอธิบาย ตามผล ----
-    meta = {
-        "ส": {"title": "สูงชนะ", "accent": "#00C853", "icon": "✅", "desc": f"จ่าย 1 : {PROFIT_RATE:.2f}"},
-        "ต": {"title": "ต่ำชนะ", "accent": "#A51212CA", "icon": "❌", "desc": f"จ่าย 1 : {PROFIT_RATE:.2f}"},
-        "ก": {"title": f"กลาง (คืนเงิน หัก {int(MIDDLE_FEE*100)}%)", "accent": "#F59E0B", "icon": "🟡", "desc": "คืนเงินแบบหักค่าธรรมเนียม"},
-        "จ": {"title": "จาว (คืนเต็ม)", "accent": "#22C55E", "icon": "🟢", "desc": "คืนเงินเต็มจำนวน"},
-        "ม": {"title": "เสมอ-หาย (คืนเต็ม)", "accent": "#22C55E", "icon": "🟢", "desc": "คืนเงินเต็มจำนวน"},
-        "ตจ": {"title": f"ต่ำเสมอ (หัก {int(MIDDLE_FEE*100)}%) / สูงเสียเต็ม", "accent": "#A855F7", "icon": "🟣", "desc": "ตามนโยบายพิเศษ"},
-        "ตส": {"title": f"ต่ำเสียเต็ม / สูงเสมอ (หัก {int(MIDDLE_FEE*100)}%)", "accent": "#A855F7", "icon": "🟣", "desc": "ตามนโยบายพิเศษ"},
-    }
-    m = meta.get(code, {"title": "ใส่ผลผิดใส่ใหม่", "accent": "#94A3B8", "icon": "⚪", "desc": "ตรวจสอบรหัสผลอีกครั้ง"})
-    title = m["title"]
-    accent = m["accent"]
-    icon = m["icon"]
-    desc = m["desc"]
-
-    # สีตัวอักษรผล: โทนเขียวสำหรับคืนเต็ม/จาว/ม, โทนปกติกรณีอื่น
-    text_color = "#10B981" if any(k in code for k in ("จ", "ม")) else "#E5E7EB"
-
-    return FlexSendMessage(
-        alt_text=f"สรุปผล: {title}",
-        contents={
-            "type": "bubble",
-            "size": "mega",
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "paddingAll": "0px",
-                "contents": [
-                    # ---- Header (แถบสี) ----
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "paddingAll": "14px",
-                        "backgroundColor": accent,
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": f"{icon} สรุปผลรอบที่ {pair_no}",
-                                "weight": "bold",
-                                "size": "lg",
-                                "align": "center",
-                                "color": "#0B1220"
-                            }
-                        ]
-                    },
-                    # ---- Card ----
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#0F172A",
-                        "paddingAll": "16px",
-                        "spacing": "12px",
-                        "contents": [
-                            # Title row
-                            {
-                                "type": "box",
-                                "layout": "horizontal",
-                                "contents": [
-                                    {
-                                        "type": "box",
-                                        "layout": "vertical",
-                                        "width": "6px",
-                                        "backgroundColor": accent,
-                                        "cornerRadius": "6px",
-                                        "height": "52px"
-                                    },
-                                    {
-                                        "type": "box",
-                                        "layout": "vertical",
-                                        "paddingAll": "10px",
-                                        "contents": [
-                                            {
-                                                "type": "text",
-                                                "text": title,
-                                                "weight": "bold",
-                                                "size": "xl",
-                                                "wrap": True,
-                                                "color": text_color,
-                                                "align": "start"
-                                            },
-                                            {
-                                                "type": "text",
-                                                "text": desc,
-                                                "size": "xs",
-                                                "color": "#94A3B8",
-                                                "wrap": True
-                                            }
-                                        ]
-                                    }
-                                ],
-                                "spacing": "10px",
-                                "cornerRadius": "10px"
-                            },
-
-                            {"type": "separator", "color": "#334155"},
-
-                            # Quick tips
-                            {
-                                "type": "box",
-                                "layout": "vertical",
-                                "spacing": "6px",
-                                "contents": [
-                                    {
-                                        "type": "text",
-                                        "text": "ขั้นตอนถัดไป",
-                                        "size": "sm",
-                                        "weight": "bold",
-                                        "color": "#CBD5E1"
-                                    },
-                                    {
-                                        "type": "box",
-                                        "layout": "vertical",
-                                        "backgroundColor": "#111827",
-                                        "cornerRadius": "8px",
-                                        "paddingAll": "10px",
-                                        "contents": [
-                                            {
-                                                "type": "text",
-                                                "text": "พิมพ์  เพื่อยืนยันผล",
-                                                "size": "sm",
-                                                "color": "#E5E7EB",
-                                                "wrap": True
-                                            },
-                                            {
-                                                "type": "text",
-                                                "text": "หากต้องการเปลี่ยนผล: พิมพ์ s<โค้ดผล> อีกครั้ง",
-                                                "size": "xs",
-                                                "color": "#94A3B8",
-                                                "wrap": True
-                                            }
-                                        ]
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
-            }
-        }
-    )
 
 
-def flex_settle(pair_no, rows, footer_text,
-                show_profit=False, profit_value=0,
-                balance_map=None,
-                accum=None,
-                camp_name=None):  # <--- รับตัวแปร camp_name เพิ่ม
-    
-    def _fmt_signed(n: int) -> str:
-        return f"+{fmt(n)}" if n >= 0 else f"-{fmt(abs(n))}"
 
-    has_balance = bool(balance_map)
-    has_accum   = bool(accum)
-
-    # --- 1. ส่วนหัวข้อ (Header) ปรับใหม่ให้โชว์ รอบ และ ค่าย ---
-    header_contents = [
-        # บรรทัดที่ 1: รอบที่ (ตัวใหญ่ สีทอง)
-        {
-            "type": "text",
-            "text": f"รอบที่ {pair_no}",
-            "weight": "bold",
-            "align": "center",
-            "size": "xxl",
-            "color": "#FDE68A"  # สีทอง
-        }
-    ]
-    
-    # บรรทัดที่ 2: ชื่อค่าย (ถ้ามี)
-    if camp_name:
-        header_contents.append({
-            "type": "text",
-            "text": f"🚀 ค่าย: {camp_name}",
-            "weight": "bold",
-            "align": "center",
-            "size": "md",
-            "color": "#FFFFFF",
-            "margin": "sm"
-        })
-    else:
-        # ถ้าไม่มีชื่อค่าย ให้ขึ้นว่า สรุปผลการแทง แทน
-        header_contents.insert(0, {
-             "type": "text", "text": "📊 สรุปผลการแทง", 
-             "weight": "bold", "align": "center", "size": "md", "color": "#FFFFFF"
-        })
-
-    # --- 2. ส่วนรายการผู้เล่น (Body) ---
-    header_cols = [
-        {"type": "text", "text": "ผู้เล่น",  "flex": 4, "size": "md", "weight": "bold", "color": "#FFFFFF"},
-        {"type": "text", "text": "ยอดเล่น", "flex": 3, "size": "md", "align": "end", "weight": "bold", "color": "#FFFFFF"},
-        {"type": "text", "text": "ได้เสีย",  "flex": 3, "size": "md", "align": "end", "weight": "bold", "color": "#FFFFFF"},
-    ]
-    if has_balance:
-        header_cols.append({"type": "text", "text": "คงเหลือ", "flex": 3, "size": "md", "align": "end", "weight": "bold", "color": "#FFFFFF"})
-
-    lines = []
-    if rows:
-        lines.append({"type": "box", "layout": "horizontal", "contents": header_cols})
-        lines.append({"type": "separator", "margin": "sm", "color": "#4B5563"})
-        for r in rows:
-            pl = (r.get("payout", 0) or 0) - (r.get("stake", 0) or 0)
-            pl_color = "#10B981" if pl > 0 else ("#EF4444" if pl < 0 else "#E5E7EB")
-
-            row_cols = [
-                {"type": "text", "text": r["name"],       "flex": 4, "size": "md", "color": "#E5E7EB"},
-                {"type": "text", "text": fmt(r["stake"]), "flex": 3, "size": "md", "align": "end", "color": "#F9FAFB"},
-                {"type": "text", "text": _fmt_signed(pl), "flex": 3, "size": "md", "align": "end", "color": pl_color},
-            ]
-            if has_balance:
-                bal = balance_map.get(r["uid"], 0)
-                row_cols.append({"type": "text", "text": fmt(bal), "flex": 3, "size": "md", "align": "end", "color": "#FACC15"})
-            lines.append({"type": "box", "layout": "horizontal", "contents": row_cols})
-    else:
-        lines.append({"type": "text", "text": "(ไม่มีผู้เล่น)", "size": "md", "align": "center", "color": "#9CA3AF"})
-
-    # --- 3. ส่วนสรุปกำไร (Footer) ---
-    if show_profit:
-        lines.append({"type": "separator", "margin": "md", "color": "#4B5563"})
-        lines.append({"type": "text", "text": f"💰 กำไรรอบนี้: {_fmt_signed(profit_value)}",
-                      "align": "end", "weight": "bold", "size": "md", "color": "#FACC15"})
-        if has_accum:
-            lines.append({"type": "text",
-                          "text": f"📈 สะสมกำไร: {fmt(accum['profit_sum'])} • ขาดทุน: {fmt(accum['loss_sum'])}",
-                          "align": "end", "size": "sm", "color": "#E5E7EB"})
-            lines.append({"type": "text",
-                          "text": f"🧮 สุทธิสะสม: {_fmt_signed(accum['net'])}",
-                          "align": "end", "weight": "bold", "size": "md",
-                          "color": "#10B981" if accum["net"] >= 0 else "#EF4444"})
-
-    return FlexSendMessage(
-        alt_text=f"สรุปผล รอบ {pair_no}",
-        contents={
-            "type": "bubble",
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "paddingAll": "0px",
-                "contents": [
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#16A34A",
-                        "paddingAll": "14px",
-                        "contents": header_contents # ใช้ส่วนหัวที่สร้างไว้ด้านบน
-                    },
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#1F2937",
-                        "paddingAll": "18px",
-                        "spacing": "md",
-                        "contents": lines + [
-                            {"type": "separator", "margin": "md", "color": "#4B5563"},
-                            {"type": "text", "text": footer_text, "align": "end", "size": "md", "color": "#9CA3AF"}
-                        ]
-                    }
-                ]
-            }
-        }
-    )
-
-def flex_scoreboard(history_list):
-    # Mapping ผล: เปลี่ยนจากสีพื้นหลัง เป็นสีตัวอักษร (color)
-    res_map = {
-        "ส":  {"text": "สูง ✅", "color": "#22C55E"},
-        "ต":  {"text": "ต่ำ ❌", "color": "#EF4444"},
-        "ก":  {"text": "กลาง ⛔", "color": "#EAB308"},
-        "จ":  {"text": "จาว ⛔", "color": "#3B82F6"},
-        "ม":  {"text": "เสมอ ⛔", "color": "#3B82F6"},
-        "ตจ": {"text": "ต่ำเสมอ สูงเสียเต็ม ⛔❌", "color": "#A855F7"},
-        "ตส": {"text": "ต่ำเสียเต็ม สูงเสมอ ✅⛔", "color": "#A855F7"},
-    }
-
-    # ===== 🔥 จุดแก้จริง: คัดเหลือผลล่าสุดต่อรอบ =====
-    latest_by_round = {}
-    for h in history_list or []:
-        r = h.get("round")
-        if r is None:
-            continue
-        latest_by_round[r] = h   # ตัวหลังทับตัวก่อน (ผลล่าสุด)
-
-    # เรียงตามรอบ แล้วเอา 10 รอบล่าสุด
-    recent = [latest_by_round[r] for r in sorted(latest_by_round)][-10:]
-
-    rows = []
-
-    # --- ส่วนหัวตาราง ---
-    rows.append({
-        "type": "box",
-        "layout": "horizontal",
-        "paddingBottom": "10px",
-        "contents": [
-            {"type": "text", "text": "#", "flex": 1, "size": "xs", "color": "#6B7280", "align": "center"},
-            {"type": "text", "text": "ชื่อค่าย ", "flex": 3, "size": "xs", "color": "#6B7280", "offsetStart": "10px"},
-            {"type": "text", "text": "ผล ", "flex": 4, "size": "xs", "align": "center", "color": "#6B7280"},
-        ]
-    })
-
-    # วนลูปสร้างแถวข้อมูล
-    for idx, item in enumerate(recent):
-        code_key = item.get('code', '?')
-
-        if code_key in res_map:
-            style = res_map[code_key]
-        else:
-            base_code = code_key[0] if code_key else "?"
-            style = res_map.get(base_code, {"text": code_key, "color": "#FFFFFF"})
-
-        camp_name = item.get('camp') or "-"
-
-        rows.append({
-            "type": "box",
-            "layout": "horizontal",
-            "paddingVertical": "8px",
-            "alignItems": "center",
-            "contents": [
-                {
-                    "type": "text",
-                    "text": str(item['round']),
-                    "flex": 1,
-                    "size": "xs",
-                    "color": "#9CA3AF",
-                    "align": "center"
-                },
-                {
-                    "type": "text",
-                    "text": camp_name,
-                    "flex": 3,
-                    "size": "sm",
-                    "color": "#E5E7EB",
-                    "wrap": False,
-                    "offsetStart": "10px"
-                },
-                {
-                    "type": "text",
-                    "text": style['text'],
-                    "flex": 4,
-                    "color": style['color'],
-                    "weight": "bold",
-                    "align": "center",
-                    "size": "xxs" if len(style['text']) > 8 else "xs",
-                    "wrap": True
-                }
-            ]
-        })
-
-        if idx < len(recent) - 1:
-            rows.append({"type": "separator", "color": "#1F2937", "margin": "none"})
-
-    return FlexSendMessage(
-        alt_text="สกอบั้งไฟล่าสุด",
-        contents={
-            "type": "bubble",
-            "size": "mega",
-            "styles": {
-                "header": {"backgroundColor": "#111827"},
-                "body": {"backgroundColor": "#111827"}
-            },
-            "header": {
-                "type": "box",
-                "layout": "vertical",
-                "paddingAll": "20px",
-                "contents": [
-                    {
-                        "type": "text",
-                        "text": "📜 สกอบั้งไฟ",
-                        "weight": "bold",
-                        "size": "lg",
-                        "color": "#FBBF24",
-                        "align": "center"
-                    }
-                ]
-            },
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "paddingTop": "0px",
-                "contents": [
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#1F2937",
-                        "cornerRadius": "10px",
-                        "paddingAll": "12px",
-                        "contents": rows if rows else [
-                            {
-                                "type": "text",
-                                "text": "(ยังไม่มีประวัติ)",
-                                "align": "center",
-                                "color": "#6B7280",
-                                "size": "sm",
-                                "paddingAll": "20px"
-                            }
-                        ]
-                    }
-                ]
-            }
-        }
-    )
 
 
 def flex_call_pages(user_rows, title="ตารางเครดิตลูกค้า", per_page=30):
@@ -2441,140 +2033,10 @@ def copy_page(acct):
 
 
 
-def flex_register_success(cid: int):
-    return FlexSendMessage(
-        alt_text="ลงทะเบียนสำเร็จ",
-        contents={
-            "type": "bubble",
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "paddingAll": "10px",
-                "backgroundColor": "#111827",
-                "cornerRadius": "12px",
-                "spacing": "sm",
-                "contents": [
-                    {"type": "text", "text": "✅ ลงทะเบียนสำเร็จ", "weight": "bold", "size": "md", "align": "center", "color": "#22C55E"},
-                    {"type": "text", "text": f"🎫 ID ของคุณคือ {cid}", "size": "sm", "weight": "bold", "align": "center", "color": "#FACC15"},
-                    {"type": "text", "text": "พิมพ์ C เพื่อดูบัตรสมาชิก", "size": "xs", "align": "center", "color": "#9CA3AF"}
-                ]
-            }
-        }
-    )
 
 
 from linebot.models import FlexSendMessage
 
-def flex_summary(st, event=None):
-    bets = list(st["bet_index"].values())
-    rows = []
-
-    if not bets:
-        rows.append({
-            "type": "text",
-            "text": "❌ ยังไม่มีบิล",
-            "size": "md",
-            "align": "center",
-            "color": "#9CA3AF",
-            "weight": "bold"
-        })
-    else:
-        # ===== หัวตาราง =====
-        rows.append({
-            "type": "box", "layout": "horizontal", "contents": [
-                {"type": "text", "text": "👤 ผู้เล่น", "flex": 5, "size": "sm", "weight": "bold", "color": "#F9FAFB"},
-                {"type": "text", "text": "🚀 สูง/ต่ำ", "flex": 3, "size": "sm", "align": "center", "weight": "bold", "color": "#F9FAFB"},
-                {"type": "text", "text": "💰 ยอดเล่น", "flex": 3, "size": "sm", "align": "end", "weight": "bold", "color": "#F9FAFB"},
-            ]
-        })
-        rows.append({"type": "separator", "margin": "sm", "color": "#6B7280"})
-
-        # ===== รายการบิล =====
-        for i, b in enumerate(bets):
-            bg_color = "#1E293B"   # ใช้สีเดียวทุกแถว
-            name = b["name"]
-            if b["side"] == "HI":
-                side_display = "✅ สูง"
-                side_color = "#22C55E"
-            else:
-                side_display = "❌ ต่ำ"
-                side_color = "#EF4444"
-
-            # กล่องข้อมูลลูกค้า
-            rows.append({
-                "type": "box",
-                "layout": "vertical",
-                "contents": [
-                    {
-                        "type": "box",
-                        "layout": "horizontal",
-                        "backgroundColor": bg_color,
-                        "cornerRadius": "6px",
-                        "paddingAll": "6px",
-                        "contents": [
-                            {"type": "text", "text": name, "flex": 5, "size": "sm", "color": "#E5E7EB"},
-                            {"type": "text", "text": side_display, "flex": 3, "size": "sm", "align": "center", "color": side_color},
-                            {"type": "text", "text": fmt(b["amount"]), "flex": 3, "size": "sm", "align": "end", "color": "#FACC15"},
-                        ]
-                    },
-                    # ==== เส้นคั่นใต้แต่ละชื่อ ====
-                    {"type": "separator", "color": "#334155", "margin": "xs"}
-                ]
-            })
-
-    # ===== Flex Message =====
-    return FlexSendMessage(
-        alt_text=f"📋 สรุปการแทง คู่ที่ {st['pairNo']}",
-        contents={
-            "type": "bubble",
-            "styles": {"body": {"backgroundColor": "#111827"}},
-            "body": {
-                "type": "box",
-                "layout": "vertical",
-                "paddingAll": "0px",
-                "contents": [
-                    # ส่วนหัว
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "paddingAll": "14px",
-                        "backgroundColor": "#22C55E",
-                        "contents": [{
-                            "type": "text",
-                            "text": f"📊 สรุปการแทง รอบ {st['pairNo']} ({len(bets)})",
-                            "weight": "bold",
-                            "align": "center",
-                            "size": "lg",
-                            "color": "#FFFFFF"
-                        }]
-                    },
-                    # ส่วนตาราง
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#1E293B",
-                        "paddingAll": "12px",
-                        "spacing": "sm",
-                        "contents": rows
-                    },
-                    # ส่วนท้าย
-                    {
-                        "type": "box",
-                        "layout": "vertical",
-                        "backgroundColor": "#0F172A",
-                        "paddingAll": "10px",
-                        "contents": [
-                            {"type": "text",
-                             "text": f"รวมทั้งหมด {len(bets)} บิล",
-                             "align": "end",
-                             "size": "sm",
-                             "color": "#E5E7EB"}
-                        ]
-                    }
-                ]
-            }
-        }
-    )
 
 
 
@@ -4056,7 +3518,7 @@ def on_message(event: MessageEvent):
                 if p:
                     msg = TextSendMessage(settle_payload_to_text(p))
                     # ส่งแค่ 1 กลุ่มแรก เพื่อลดโควต้า (ปรับได้ถ้าต้องการ)
-                    bo_targets = BACKOFFICE_GROUP_IDS[:1]
+                    bo_targets = list(BACKOFFICE_GROUP_IDS)[:1]
                     for gid_to in bo_targets:
                         safe_push(gid_to, msg, label="backoffice_text")
 
