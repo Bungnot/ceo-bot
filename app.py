@@ -882,21 +882,22 @@ def can_bet(state, uid, side, amount):
         exist_side_th = "สูง" if existing["side"] == "HI" else "ต่ำ"
         if side != existing["side"]:
             return (False, f"❌ ห้ามแทงสวน — คุณมีบิลเดิม: {exist_side_th} {fmt(existing['amount'])}  (พิมพ์ X เพื่อยกเลิกก่อน)")
-        else:
-            return (False, f"❌ จำกัด 1 บิล/รอบ — คุณมีบิล {exist_side_th} {fmt(existing['amount'])} อยู่แล้ว  (พิมพ์ X เพื่อยกเลิกก่อน)")
+        # ฝั่งเดิม = ลงเพิ่มได้ (รวมกับยอดเดิม) จนกว่าจะเต็มเพดานต่อคน
+
+    already = existing["amount"] if existing else 0
+    user_cap = min(MAX_BET, USER_SIDE_CAP[side])
 
     if amount < MIN_BET:
         return (False, f"ขั้นต่ำ {MIN_BET}")
-    if amount > MAX_BET:
-        return (False, f"สูงสุด {MAX_BET}")
+    if already + amount > user_cap:
+        left = max(user_cap - already, 0)
+        if already:
+            return (False, f"เกินสูงสุด {fmt(user_cap)} ต่อคน — มีอยู่ {fmt(already)} ลงเพิ่มได้อีก {fmt(left)}")
+        return (False, f"สูงสุด {fmt(user_cap)}")
 
     remain = user_fund_remain(state, uid)
     if remain < amount:
         return (False, f"ทุนคงเหลือไม่พอ (มี {fmt(remain)})")
-
-    if amount > USER_SIDE_CAP[side]:
-        side_th = "สูง" if side == "HI" else "ต่ำ"
-        return (False, f"ฝั่ง{side_th} ต่อคนเกิน {fmt(USER_SIDE_CAP[side])}")
 
     # ✅ เช็คเพดานต่อฝั่ง (ย้ายออกมาให้อยู่นอก if ด้านบน)
     if state["totals"][side] + amount > SIDE_CAP[side]:
@@ -1414,11 +1415,11 @@ def flex_summary(st, event=None):
 def text_bank():
     return TextSendMessage(
         text=(
-            "📌 เซิ้ง®บั้งไฟอิสาน V2\n\n"
-            "⚠️แจ้งเลขบัญชีฝาก⚠️\n\n"
-            "🏳️ 020253012700   \n"
-            "💰 ออมสิน\n"
-            "💳 วรรณวิไล ชาเมืองกูล\n\n"
+            "📌CEO-บั้งไฟน้อย\n\n"
+            "⚠️แจ้งเลขบัญชีฝาก \n\n"
+            "🏳️ XXXXXXXX   \n"
+            "💰 XXXX\n"
+            "💳 XXXXX XXXX\n\n"
             "📌 เพื่อป้องกันมิจฉาชีพ ชื่อผู้ฝาก-ถอน ต้องเป็นชื่อเดียวกันเท่านั้น⚠️\n"
             "📌 กด C ดูไอดีตัวเองส่งให้แอดมินได้เลย\n"
         )
@@ -1630,7 +1631,7 @@ def rules_text() -> str:
         f"🔵อั้นสูง = {fmt(SIDE_CAP['HI'])}\n"
         f"🟢ออกกลางเจ๊า หัก {int(MIDDLE_FEE*100)}%\n"
         "\n"
-        "- จำกัด 1 บิล/รอบ และห้ามแทงสวน (ต้องยกเลิกบิลเดิมก่อน)\n"
+        "- ลงเพิ่มฝั่งเดิมได้ (รวมไม่เกินสูงสุดต่อคน) แต่ห้ามแทงสวน\n"
         "- พิมพ์ x เพื่อยกเลิกบิล / พิมพ์ C เพื่อดูบัตรสมาชิก\n"
     )
 
@@ -3828,12 +3829,16 @@ def on_message(event: MessageEvent):
                 save_users_persist()
 
                 name = u["name"]
-                st["bet_index"][uid] = {"uid": uid, "name": name, "side": bet["side"], "amount": bet["amount"]}
+                prev = st["bet_index"].get(uid)
+                total_amt = (prev["amount"] if prev else 0) + bet["amount"]
+                st["bet_index"][uid] = {"uid": uid, "name": name, "side": bet["side"], "amount": total_amt}
                 st["totals"][bet["side"]] += bet["amount"]
 
                 side_th = "สูง" if bet["side"] == "HI" else "ต่ำ"
                 safe_reply(event, TextSendMessage(
-                    f"คุณ {name} ✅ เล่น {side_th} = {fmt(bet['amount'])} • ยอดเงินคงเหลือ {fmt(u['credit'])}"
+                    (f"คุณ {name} ✅ ลงเพิ่ม {side_th} +{fmt(bet['amount'])} • รวม {fmt(total_amt)} • ยอดเงินคงเหลือ {fmt(u['credit'])}"
+                     if prev else
+                     f"คุณ {name} ✅ เล่น {side_th} = {fmt(bet['amount'])} • ยอดเงินคงเหลือ {fmt(u['credit'])}")
                 )); return
 
 
