@@ -122,7 +122,7 @@ MIDDLE_FEE  = float(os.getenv("MIDDLE_FEE",  "0.05"))   # หักเมื่�
 MIN_BET = int(os.getenv("MIN_BET", "30"))
 MAX_BET = int(os.getenv("MAX_BET", "2000"))
 USER_SIDE_CAP = {"HI": 2000, "LO": 2000}
-SIDE_CAP      = {"HI": 7000, "LO": 10000}
+SIDE_CAP      = {"HI": 10000, "LO": 7000}
 ROUND_CAP     = 17000
 
 # ====== SIMPLE PER-USER COOLDOWN (anti-spam reply gap) ======
