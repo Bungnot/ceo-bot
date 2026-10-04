@@ -1467,10 +1467,10 @@ def text_bank():
     return TextSendMessage(
         text=(
             "📌 CEO บั้งไฟน้อย\n\n"
-            "⚠️แจ้งเลขบัญชีฝาก⚠️\n\n"
-            "🏳️ XXXXXXX   \n"
+            "⚠️แจ้งเลขบัญชีฝาก\n\n"
+            "🏳️ XXXX   \n"
             "💰 XXXX\n"
-            "💳 XXXX XXX\n\n"
+            "💳 XXXX XXXX\n\n"
             "📌 เพื่อป้องกันมิจฉาชีพ ชื่อผู้ฝาก-ถอน ต้องเป็นชื่อเดียวกันเท่านั้น⚠️\n"
             "📌 กด C ดูไอดีตัวเองส่งให้แอดมินได้เลย\n"
         )
@@ -3078,14 +3078,14 @@ def on_message(event: MessageEvent):
             safe_reply(event, TextSendMessage(msg)); return
 
         # ==== เติม/ลบทุน+เครดิต แบบ $+ <cid> <amt> / $- <cid> <amt> ====
-        m_add = re.match(r"^\$\+\s*(\d+)\s+(\d+)$", text)
-        m_sub = re.match(r"^\$-\s*(\d+)\s+(\d+)$", text)
+        m_add = re.match(r"^\$?\+\s*(\d+)\s+([\d,]+)$", text)
+        m_sub = re.match(r"^\$?-\s*(\d+)\s+([\d,]+)$", text)
         if m_add or m_sub:
             if not is_admin(uid):
                 safe_reply(event, TextSendMessage("คำสั่งนี้ใช้ได้เฉพาะแอดมิน")); return
 
             cid = int((m_add or m_sub).group(1))
-            amt = int((m_add or m_sub).group(2))
+            amt = int((m_add or m_sub).group(2).replace(",", ""))
             with with_users_lock(): # [FIXED] ใช้แค่ with_users_lock() เพราะ with_rooms_lock() คลุมอยู่แล้ว
                 target = get_user_by_cid(cid)
                 if not target:
