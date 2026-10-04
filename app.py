@@ -1181,18 +1181,20 @@ def flex_pause_notice(pair_no: int, camp: str):
 
 
 # ---------- บัตรสมาชิก (C) ----------
-def _avatar(user):
+def _avatar(user, size=40):
+    r = f"{size // 2}px"
     pic = user.get("pictureUrl")
     if pic:
         return _box([{"type": "image", "url": pic, "size": "full", "aspectMode": "cover", "aspectRatio": "1:1"}],
-                    width="56px", height="56px", cornerRadius="28px", flex=0)
+                    width=f"{size}px", height=f"{size}px", cornerRadius=r, flex=0)
     initial = (user.get("name") or "?").strip()[:1] or "?"
-    return _box([_t(initial, size="xl", weight="bold", color=TH["green"], align="center", gravity="center")],
-                width="56px", height="56px", cornerRadius="28px", backgroundColor=TH["green_bg"],
+    return _box([_t(initial, size="md", weight="bold", color=TH["green"], align="center", gravity="center")],
+                width=f"{size}px", height=f"{size}px", cornerRadius=r, backgroundColor=TH["green_bg"],
                 justifyContent="center", flex=0)
 
 
 def flex_customer_card(st, user):
+    """บัตรสมาชิกแบบกะทัดรัด: รูป • ชื่อ/ID • เครดิต อยู่แถวเดียว"""
     if not user:
         return TextSendMessage(text="กรุณาพิมพ์ add เพื่อรับไอดีก่อน")
 
@@ -1202,30 +1204,32 @@ def flex_customer_card(st, user):
     top = _box([
         _avatar(user),
         _box([
-            _t(user.get("name", "ผู้เล่น"), size="md", weight="bold", maxLines=2),
-            _box([_pill(f"ID {user['cid']}", "green")], layout="horizontal", margin="xs"),
+            _t(user.get("name", "ผู้เล่น"), size="sm", weight="bold", wrap=False),
+            _t(f"ID {user['cid']}", size="xs", weight="bold", color=TH["green"]),
         ], margin="md", flex=1, justifyContent="center"),
+        _box([
+            _t("คงเหลือ", size="xxs", color=TH["faint"], align="end"),
+            _t(f"{fmt(credit)} ฿", size="lg", weight="bold", align="end", wrap=False),
+        ], flex=0, justifyContent="center"),
     ], layout="horizontal", alignItems="center")
 
-    credit_box = _box([
-        _t("เครดิตคงเหลือ", size="sm", color=TH["muted"], align="center"),
-        _t(f"{fmt(credit)} ฿", size="3xl", weight="bold", color=TH["text"], align="center", wrap=False),
-    ], backgroundColor=TH["page"], cornerRadius="12px", paddingAll="12px", margin="lg")
-
+    contents = [top]
     if bet:
-        bet_box = _box([_side_row(f"บิล{SIDE_TH[bet['side']]}", f"{fmt(bet['amount'])} ฿",
-                                  SIDE_TONE[bet["side"]], size="lg")], margin="md")
-    else:
-        bet_box = _t("ยังไม่มีบิลในรอบนี้", size="sm", color=TH["faint"], align="center", margin="md")
+        fg, bg = TONE[SIDE_TONE[bet["side"]]]
+        contents.append(_box([
+            _t(f"บิลรอบนี้ • {SIDE_TH[bet['side']]}", size="xs", weight="bold", color=fg, flex=1, gravity="center"),
+            _t(f"{fmt(bet['amount'])} ฿", size="sm", weight="bold", color=fg, align="end", flex=0),
+        ], layout="horizontal", backgroundColor=bg, cornerRadius="8px",
+            paddingAll="8px", paddingStart="10px", paddingEnd="10px", margin="md"))
 
     return FlexSendMessage(
         alt_text=f"ID {user['cid']} • เครดิต {fmt(credit)} บาท",
         contents={"type": "bubble", "size": "kilo",
-                  "body": _box([top, credit_box, bet_box], backgroundColor=TH["bg"], paddingAll="16px")},
+                  "body": _box(contents, backgroundColor=TH["bg"], paddingAll="12px")},
     )
 
 
-# ---------- สมัครสำเร็จ ----------
+
 def flex_register_success(cid: int):
     body = [
         _t("ID ของคุณ", size="sm", color=TH["muted"], align="center"),
