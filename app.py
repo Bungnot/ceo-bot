@@ -118,12 +118,12 @@ from linebot.models import (
 # ====== CONFIG (ปรับได้) ======
 DEPOSIT_URL = os.getenv("DEPOSIT_URL", "https://page.line.me/957gvogc")
 PROFIT_RATE = float(os.getenv("PROFIT_RATE", "0.95"))   # ชนะหัก 5% = จ่ายสุทธิ 1:0.95
-MIDDLE_FEE  = float(os.getenv("MIDDLE_FEE",  "0.03"))   # หักเมื่อคืนเงิน (กลาง/เสมอแบบหัก)
+MIDDLE_FEE  = float(os.getenv("MIDDLE_FEE",  "0.05"))   # หักเมื่อคืนเงิน (กลาง/เสมอแบบหัก)
 MIN_BET = int(os.getenv("MIN_BET", "30"))
-MAX_BET = int(os.getenv("MAX_BET", "10000"))
-USER_SIDE_CAP = {"HI": 10000, "LO": 10000}
-SIDE_CAP      = {"HI": 50000, "LO": 30000}
-ROUND_CAP     = 80000
+MAX_BET = int(os.getenv("MAX_BET", "2000"))
+USER_SIDE_CAP = {"HI": 2000, "LO": 2000}
+SIDE_CAP      = {"HI": 7000, "LO": 10000}
+ROUND_CAP     = 17000
 
 # ====== SIMPLE PER-USER COOLDOWN (anti-spam reply gap) ======
 REPLY_COOLDOWN_SEC = int(os.getenv("REPLY_COOLDOWN_SEC", "6"))
