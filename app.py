@@ -1467,10 +1467,10 @@ def text_bank():
     return TextSendMessage(
         text=(
             "📌 CEO บั้งไฟน้อย\n\n"
-            "⚠️แจ้งเลขบัญชีฝาก\n\n"
-            "🏳️ XXXX   \n"
-            "💰 XXXX\n"
-            "💳 XXXX XXXX\n\n"
+            "⚠️แจ้งเลขบัญชีฝาก⚠️\n\n"
+            "🏳️ รออัพเดท   \n"
+            "💰 รออัพเดท\n"
+            "💳 รออัพเดท รออัพเดท\n\n"
             "📌 เพื่อป้องกันมิจฉาชีพ ชื่อผู้ฝาก-ถอน ต้องเป็นชื่อเดียวกันเท่านั้น⚠️\n"
             "📌 กด C ดูไอดีตัวเองส่งให้แอดมินได้เลย\n"
         )
@@ -3994,6 +3994,37 @@ _SLIP_ERR_TH = {
 }
 
 
+# error ที่แปลว่า "ระบบเรา/EasySlip มีปัญหา" (ไม่ใช่ความผิดของรูป)
+_SLIP_SYSTEM_ERRORS = {
+    "MISSING_API_KEY", "INVALID_API_KEY", "BRANCH_INACTIVE", "SERVICE_BANNED", "SERVICE_DELETED",
+    "IP_NOT_ALLOWED", "QUOTA_EXCEEDED", "USER_BANNED", "RATE_LIMIT_EXCEEDED",
+    "API_SERVER_ERROR", "INTERNAL_SERVER_ERROR", "NETWORK_ERROR",
+}
+SLIP_SILENT_NON_SLIP = os.getenv("SLIP_SILENT_NON_SLIP", "1") == "1"
+
+
+def _slip_error_reply(code: str, msg: str):
+    """แปลง error เป็นข้อความตอบลูกค้า — คืน None = ไม่ตอบ (รูปทั่วไปที่ไม่ใช่สลิป)"""
+    code = code or ""
+    low = (msg or "").lower()
+    if code in _SLIP_SYSTEM_ERRORS or code.startswith("HTTP_5"):
+        return "⚠️ ระบบตรวจสลิปขัดข้องชั่วคราว\nแอดมินจะตรวจสอบและเติมให้ครับ"
+    if code == "SLIP_PENDING":
+        return _SLIP_ERR_TH["SLIP_PENDING"]
+    if code == "IMAGE_SIZE_TOO_LARGE":
+        return _SLIP_ERR_TH["IMAGE_SIZE_TOO_LARGE"]
+    # ไม่มี QR ในรูป = รูปทั่วไป → เงียบ ไม่รบกวนกลุ่ม
+    if "qr" in low or code in ("INVALID_IMAGE_FORMAT", "INVALID_IMAGE_TYPE", "VALIDATION_ERROR"):
+        return None if SLIP_SILENT_NON_SLIP else _SLIP_ERR_TH["SLIP_NOT_FOUND"]
+    if code == "SLIP_NOT_FOUND":
+        # มี QR แต่ธนาคารไม่พบรายการ: สลิปปลอม / สลิปจ่ายบิล / สลิปแก้ไข
+        return ("❌ ตรวจสลิปไม่ผ่าน: ไม่พบรายการนี้ในระบบธนาคาร\n"
+                "(รับเฉพาะสลิปโอนเงินเข้าบัญชีร้าน ไม่รับสลิปจ่ายบิล)\n"
+                "หากโอนจริง กรุณาติดต่อแอดมิน")
+    # error อื่น ๆ ที่ไม่รู้จัก → ไม่ตอบในกลุ่ม แต่บันทึก log ไว้ให้ตรวจ
+    return None
+
+
 def _slip_check_receiver(data: dict):
     """ตรวจว่าโอนเข้าบัญชีร้านจริง → (ok, reason)"""
     if EASYSLIP_MATCH_ACCOUNT:
@@ -4039,10 +4070,9 @@ def process_slip_topup(event, uid: str):
     ok, data, code, msg = easyslip_verify_image(image_bytes)
     if not ok:
         app.logger.warning("slip: easyslip error uid=%s code=%s msg=%s", uid, code, msg)
-        if code in _SLIP_ERR_TH:
-            safe_reply(event, TextSendMessage(_SLIP_ERR_TH[code]))
-        else:
-            safe_reply(event, TextSendMessage("⚠️ ระบบตรวจสลิปขัดข้องชั่วคราว\nแอดมินจะตรวจสอบและเติมให้ครับ"))
+        reply = _slip_error_reply(code, msg)
+        if reply:
+            safe_reply(event, TextSendMessage(reply))
         return
 
     raw = data.get("rawSlip") or {}
