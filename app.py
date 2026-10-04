@@ -1408,11 +1408,11 @@ def flex_customer_card(st, user):
 def text_bank():
     return TextSendMessage(
         text=(
-            "📌 เซิ้ง®บั้งไฟอิสาน V2\n\n"
-            "⚠️แจ้งเลขบัญชีฝาก⚠️\n\n"
-            "🏳️ 020253012700   \n"
-            "💰 ออมสิน\n"
-            "💳 วรรณวิไล ชาเมืองกูล\n\n"
+            "📌 CEO บั้งไฟน้อย\n\n"
+            "⚠️ บัญชีฝากเงิน\n\n"
+            "🏳️ 123456789   \n"
+            "💰 XXXX\n"
+            "💳 XXXX XXXXX\n\n"
             "📌 เพื่อป้องกันมิจฉาชีพ ชื่อผู้ฝาก-ถอน ต้องเป็นชื่อเดียวกันเท่านั้น⚠️\n"
             "📌 กด C ดูไอดีตัวเองส่งให้แอดมินได้เลย\n"
         )
@@ -3235,6 +3235,40 @@ def on_message(event: MessageEvent):
                 safe_reply(event, TextSendMessage("ไม่พบไอดีนี้ในรายชื่อแอดมิน"))
             return
         
+        # ===== Admin: ล้างแอดมินทั้งหมด (เหลือแค่คนที่สั่ง) — ล้างแอดมิน <PIN> =====
+        if re.match(r"^ล้างแอดมิน\b", text):
+            if not is_admin(uid):
+                return
+            pin = _admin_auth_pin(" " + text)
+            if ADMIN_PIN and not compare_digest(pin, ADMIN_PIN):
+                safe_reply(event, TextSendMessage("PIN ไม่ถูกต้อง\nรูปแบบ: ล้างแอดมิน <PIN>")); return
+            with _admin_ids_lock:
+                n_old = len(ADMIN_IDS)
+                ADMIN_IDS[:] = [uid]  # เก็บคนสั่งไว้ กันไม่มีแอดมินเหลือ
+            save_admins_persist()
+            safe_reply(event, TextSendMessage(
+                f"✅ ล้างแอดมินแล้ว ({n_old} → 1)\nเหลือแอดมินคือคุณคนเดียว\nเพิ่มใหม่: เพิ่มแอดมิน @ชื่อ"
+            )); return
+
+        # ===== Admin: ล้างข้อมูลลูกค้าทั้งหมด — ล้างลูกค้า <PIN> =====
+        if re.match(r"^ล้างลูกค้า\b", text):
+            if not is_admin(uid):
+                return
+            pin = _admin_auth_pin(" " + text)
+            if ADMIN_PIN and not compare_digest(pin, ADMIN_PIN):
+                safe_reply(event, TextSendMessage("PIN ไม่ถูกต้อง\nรูปแบบ: ล้างลูกค้า <PIN>")); return
+            if any(stx.get("bet_index") for stx in rooms.values()):
+                safe_reply(event, TextSendMessage("❌ ล้างไม่ได้: ยังมีบิลค้างอยู่ ให้สรุปผลหรือพิมพ์ xx ก่อน")); return
+            with with_users_lock():
+                n_old = len(users)
+                total_credit = sum(int(u.get("credit", 0) or 0) for u in users.values())
+                users.clear()
+                nextCustomerId = 201
+                _save_users_snapshot()  # เขียนทันที ไม่รอ debounce
+            safe_reply(event, TextSendMessage(
+                f"✅ ล้างข้อมูลลูกค้าทั้งหมดแล้ว\nลบ {n_old} คน • เครดิตรวมที่ถูกลบ {fmt(total_credit)} บาท\nID ใหม่จะเริ่มที่ 201"
+            )); return
+
         # ===== Admin: list (เช็คแอดมิน / admin list) =====
         if R_ADMIN_LIST.match(text):
             if not is_admin(uid):
@@ -3254,6 +3288,13 @@ def on_message(event: MessageEvent):
             lines.append(f"\nรวม {len(current_admins)} คน")
             safe_reply(event, TextSendMessage("\n".join(lines)))
             return
+
+        # ===== Admin: ตรวจประวัติสลิปที่เติมแล้ว (สลิป <transRef>) =====
+        m_slip = re.match(r"^สลิป\s+(\S+)$", text)
+        if m_slip:
+            if not is_admin(uid):
+                safe_reply(event, TextSendMessage("คำสั่งนี้ใช้ได้เฉพาะแอดมิน")); return
+            safe_reply(event, TextSendMessage(slip_lookup_text(m_slip.group(1)))); return
 
         # ===== Group ID (gid) =====
         if re.match(r"^gid\b", text, re.IGNORECASE):
@@ -4319,6 +4360,248 @@ def on_message(event: MessageEvent):
 
     # ----- ที่เหลือค่อยไปเช็คคำสั่งแอดมิน/ยูทิลต่างๆ เหมือนเดิม -----
 
+# ====================================================================
+# ====== AUTO TOPUP: ตรวจสลิปด้วย EasySlip API v2 แล้วเติมเครดิตอัตโนมัติ ======
+# ====================================================================
+# ตั้งค่าใน .env
+#   EASYSLIP_ENABLED=1
+#   EASYSLIP_API_KEY=xxxxxxxx                (จาก developer.easyslip.com)
+#   EASYSLIP_MATCH_ACCOUNT=1                 (แนะนำ: ต้องผูกบัญชีรับเงินในหน้า EasySlip ก่อน)
+#   SLIP_RECEIVER_NAMES=วรรณวิไล,WANWILAI    (สำรอง: ชื่อผู้รับที่ยอมรับ คั่นด้วย ,)
+#   SLIP_MAX_AGE_MIN=120                     (สลิปเก่ากว่านี้ไม่รับ หน่วยนาที)
+#   SLIP_MIN_AMOUNT=1  /  SLIP_MAX_AMOUNT=0  (0 = ไม่จำกัด)
+#   SLIP_NOTIFY_BACKOFFICE=0                 (1 = push แจ้งกลุ่มหลังบ้าน ใช้โควต้า push)
+import requests as _slip_requests
+
+EASYSLIP_ENABLED = os.getenv("EASYSLIP_ENABLED", "0") == "1"
+EASYSLIP_API_KEY = os.getenv("EASYSLIP_API_KEY", "").strip()
+EASYSLIP_URL = os.getenv("EASYSLIP_URL", "https://api.easyslip.com/v2/verify/bank")
+EASYSLIP_TIMEOUT = (10, 30)
+EASYSLIP_MATCH_ACCOUNT = os.getenv("EASYSLIP_MATCH_ACCOUNT", "1") == "1"
+SLIP_RECEIVER_NAMES = [s.strip().lower() for s in os.getenv("SLIP_RECEIVER_NAMES", "").split(",") if s.strip()]
+SLIP_MAX_AGE_MIN = int(os.getenv("SLIP_MAX_AGE_MIN", "120"))
+SLIP_MIN_AMOUNT = int(os.getenv("SLIP_MIN_AMOUNT", "1"))
+SLIP_MAX_AMOUNT = int(os.getenv("SLIP_MAX_AMOUNT", "0"))
+SLIP_NOTIFY_BACKOFFICE = os.getenv("SLIP_NOTIFY_BACKOFFICE", "0") == "1"
+
+SLIPS_USED_JSON = os.path.join(DATA_DIR, "slips_used.json")
+_slips_lock = threading.RLock()
+_slips_used = {}  # transRef -> {uid, cid, amount, ts, ...}
+
+
+def _load_slips_used():
+    global _slips_used
+    try:
+        if os.path.exists(SLIPS_USED_JSON):
+            with open(SLIPS_USED_JSON, "rb") as f:
+                data = _loads_bytes(f.read())
+            if isinstance(data, dict):
+                _slips_used = data
+    except Exception:
+        app.logger.exception("load slips_used failed")
+
+
+_load_slips_used()
+
+
+def _norm_name(s: str) -> str:
+    s = (s or "").lower()
+    for p in ("นางสาว", "น.ส.", "นาย", "นาง", "mr.", "mrs.", "ms.", "miss"):
+        s = s.replace(p, "")
+    return re.sub(r"[\s.]+", "", s)
+
+
+def easyslip_verify_image(image_bytes: bytes):
+    """ส่งรูปไป EasySlip v2 → คืน (ok, data_or_None, error_code, error_message)"""
+    form = {"checkDuplicate": "true"}
+    if EASYSLIP_MATCH_ACCOUNT:
+        form["matchAccount"] = "true"
+    last_code, last_msg = "NETWORK_ERROR", "เชื่อมต่อ EasySlip ไม่ได้"
+    for attempt in range(3):
+        try:
+            r = _slip_requests.post(
+                EASYSLIP_URL,
+                headers={"Authorization": f"Bearer {EASYSLIP_API_KEY}"},
+                files={"image": ("slip.jpg", image_bytes, "image/jpeg")},
+                data=form,
+                timeout=EASYSLIP_TIMEOUT,
+            )
+            try:
+                res = r.json()
+            except Exception:
+                res = {}
+            if res.get("success"):
+                return True, res.get("data") or {}, None, None
+            err = res.get("error") or {}
+            last_code = err.get("code") or f"HTTP_{r.status_code}"
+            last_msg = err.get("message") or r.text[:200]
+            # retry เฉพาะ error ชั่วคราว
+            if last_code in ("API_SERVER_ERROR", "INTERNAL_SERVER_ERROR", "RATE_LIMIT_EXCEEDED") or r.status_code >= 500:
+                wait = int(r.headers.get("Retry-After", "0") or 0) or (1 + attempt)
+                time.sleep(min(wait, 5))
+                continue
+            return False, None, last_code, last_msg
+        except (_slip_requests.exceptions.Timeout, _slip_requests.exceptions.ConnectionError) as e:
+            last_msg = str(e)
+            time.sleep(1 + attempt)
+    return False, None, last_code, last_msg
+
+
+_SLIP_ERR_TH = {
+    "SLIP_NOT_FOUND": "❌ ไม่พบ QR ในสลิป หรือสลิปไม่ถูกต้อง\nกรุณาส่งรูปสลิปที่ชัดเจน (ไม่ครอป QR)",
+    "SLIP_PENDING": "⏳ สลิปธนาคารกรุงเทพยังไม่เข้าระบบ\nรอ 5 นาทีแล้วส่งสลิปเดิมใหม่อีกครั้ง",
+    "IMAGE_SIZE_TOO_LARGE": "❌ รูปใหญ่เกิน 4MB กรุณาส่งรูปใหม่",
+    "INVALID_IMAGE_FORMAT": "❌ ไฟล์รูปไม่ถูกต้อง กรุณาส่งใหม่",
+}
+
+
+def _slip_check_receiver(data: dict):
+    """ตรวจว่าโอนเข้าบัญชีร้านจริง → (ok, reason)"""
+    if EASYSLIP_MATCH_ACCOUNT:
+        if data.get("matchedAccount"):
+            return True, ""
+        return False, "บัญชีผู้รับไม่ตรงกับบัญชีของร้าน"
+    if SLIP_RECEIVER_NAMES:
+        acc = ((data.get("rawSlip") or {}).get("receiver") or {}).get("account") or {}
+        nm = acc.get("name") or {}
+        cand = _norm_name(f"{nm.get('th', '')}|{nm.get('en', '')}")
+        for want in SLIP_RECEIVER_NAMES:
+            if _norm_name(want) and _norm_name(want) in cand:
+                return True, ""
+        return False, "ชื่อผู้รับไม่ตรงกับบัญชีของร้าน"
+    # ไม่ได้ตั้งค่าอะไรเลย → ไม่ยอมเติมอัตโนมัติ (กันโอนเข้าบัญชีอื่นแล้วเอาสลิปมาเติม)
+    return False, "ระบบยังไม่ได้ตั้งค่าบัญชีรับเงิน (แจ้งแอดมิน)"
+
+
+def _slip_check_age(raw: dict):
+    if SLIP_MAX_AGE_MIN <= 0:
+        return True, ""
+    ds = (raw.get("date") or "").replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(ds)
+        age_min = (time.time() - dt.timestamp()) / 60
+        if age_min > SLIP_MAX_AGE_MIN:
+            return False, f"สลิปเก่าเกิน {SLIP_MAX_AGE_MIN} นาที"
+        return True, ""
+    except Exception:
+        return False, "อ่านวันที่ในสลิปไม่ได้"
+
+
+def process_slip_topup(event, uid: str):
+    """ดาวน์โหลดรูปจาก LINE → ตรวจ EasySlip → เติมเครดิต (กันสลิปซ้ำ) → ตอบกลับ"""
+    try:
+        content = line_bot_api.get_message_content(event.message.id, timeout=LINE_API_TIMEOUT)
+        image_bytes = content.content
+    except Exception:
+        app.logger.exception("slip: download image failed")
+        safe_reply(event, TextSendMessage("❌ โหลดรูปสลิปไม่สำเร็จ กรุณาส่งใหม่อีกครั้ง"))
+        return
+
+    ok, data, code, msg = easyslip_verify_image(image_bytes)
+    if not ok:
+        app.logger.warning("slip: easyslip error uid=%s code=%s msg=%s", uid, code, msg)
+        if code in _SLIP_ERR_TH:
+            safe_reply(event, TextSendMessage(_SLIP_ERR_TH[code]))
+        else:
+            safe_reply(event, TextSendMessage("⚠️ ระบบตรวจสลิปขัดข้องชั่วคราว\nแอดมินจะตรวจสอบและเติมให้ครับ"))
+        return
+
+    raw = data.get("rawSlip") or {}
+    trans_ref = (raw.get("transRef") or "").strip()
+    try:
+        amount = int(floor(float((raw.get("amount") or {}).get("amount") or data.get("amountInSlip") or 0)))
+    except Exception:
+        amount = 0
+    sender_name = (((raw.get("sender") or {}).get("account") or {}).get("name") or {}).get("th") or "-"
+
+    if not trans_ref or amount <= 0:
+        safe_reply(event, TextSendMessage("❌ อ่านข้อมูลสลิปไม่ครบ กรุณาติดต่อแอดมิน"))
+        return
+
+    rc_ok, rc_why = _slip_check_receiver(data)
+    if not rc_ok:
+        safe_reply(event, TextSendMessage(f"❌ ไม่สามารถเติมอัตโนมัติ: {rc_why}"))
+        return
+
+    age_ok, age_why = _slip_check_age(raw)
+    if not age_ok:
+        safe_reply(event, TextSendMessage(f"❌ ไม่สามารถเติมอัตโนมัติ: {age_why}\nกรุณาติดต่อแอดมิน"))
+        return
+
+    if amount < SLIP_MIN_AMOUNT:
+        safe_reply(event, TextSendMessage(f"❌ ยอดฝากขั้นต่ำ {fmt(SLIP_MIN_AMOUNT)} บาท"))
+        return
+    if SLIP_MAX_AMOUNT and amount > SLIP_MAX_AMOUNT:
+        safe_reply(event, TextSendMessage(
+            f"⚠️ ยอด {fmt(amount)} บาท เกินวงเงินเติมอัตโนมัติ\nแอดมินจะตรวจสอบและเติมให้ครับ"))
+        return
+
+    # ===== เช็คสลิปซ้ำ + เติมเครดิต (atomic) =====
+    with _slips_lock:
+        used = _slips_used.get(trans_ref)
+        if used:
+            safe_reply(event, TextSendMessage(
+                f"❌ สลิปนี้ถูกใช้เติมไปแล้ว (ID {used.get('cid')} เวลา {used.get('time')})"))
+            return
+        if data.get("isDuplicate"):
+            # EasySlip เคยเห็นสลิปนี้ แต่ระบบเรายังไม่เคยเติม → ให้แอดมินตรวจเอง ไม่เติมอัตโนมัติ
+            safe_reply(event, TextSendMessage(
+                "⚠️ สลิปนี้เคยถูกตรวจแล้ว ระบบไม่เติมอัตโนมัติ\nแอดมินจะตรวจสอบให้ครับ"))
+            return
+
+        with with_users_lock():
+            u = users.get(uid)
+            if not u:
+                safe_reply(event, TextSendMessage("กรุณาพิมพ์ add เพื่อรับไอดีก่อน"))
+                return
+            # บันทึกสลิปลงไฟล์ก่อน (ถ้าเขียนไม่ได้ = ไม่เติม กันเติมซ้ำ)
+            _slips_used[trans_ref] = {
+                "uid": uid,
+                "cid": u.get("cid"),
+                "amount": amount,
+                "sender": sender_name,
+                "slip_date": raw.get("date"),
+                "ts": time.time(),
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            try:
+                _atomic_write_json(SLIPS_USED_JSON, _slips_used)
+            except Exception:
+                _slips_used.pop(trans_ref, None)
+                app.logger.exception("slip: save slips_used failed")
+                safe_reply(event, TextSendMessage("⚠️ ระบบบันทึกสลิปไม่สำเร็จ แอดมินจะตรวจสอบให้ครับ"))
+                return
+
+            u["credit"] = int(u.get("credit", 0) or 0) + amount
+            new_credit = u["credit"]
+            cid, name = u.get("cid"), u.get("name")
+        save_users_persist()
+
+    app.logger.info("slip: topup ok uid=%s cid=%s amount=%s ref=%s", uid, cid, amount, trans_ref)
+    safe_reply(event, TextSendMessage(
+        f"✅ เติมเครดิตอัตโนมัติสำเร็จ\n"
+        f"🎫 ID : {cid}  {name}\n"
+        f"💰 ยอดฝาก {fmt(amount)} บาท\n"
+        f"👤 ผู้โอน: {sender_name}\n"
+        f"💳 คงเหลือ {fmt(new_credit)} บาท"
+    ))
+
+    if SLIP_NOTIFY_BACKOFFICE and BACKOFFICE_GROUP_IDS:
+        safe_push(next(iter(BACKOFFICE_GROUP_IDS)), TextSendMessage(
+            f"💵 ฝากอัตโนมัติ ID {cid} {name} +{fmt(amount)} (คงเหลือ {fmt(new_credit)})\n"
+            f"ผู้โอน: {sender_name}\nRef: {trans_ref}"
+        ), label="slip_topup")
+
+
+def slip_lookup_text(trans_ref: str) -> str:
+    with _slips_lock:
+        r = _slips_used.get(trans_ref)
+    if not r:
+        return f"ไม่พบสลิป Ref {trans_ref} ในระบบ"
+    return (f"🧾 Ref {trans_ref}\nID {r.get('cid')} • ยอด {fmt(r.get('amount', 0))}\n"
+            f"ผู้โอน: {r.get('sender')}\nเติมเมื่อ: {r.get('time')}")
+
+
 @handler.add(MessageEvent, message=ImageMessage)
 def on_image(event: MessageEvent):
     uid = event.source.user_id
@@ -4380,6 +4663,13 @@ def on_image(event: MessageEvent):
 
     if not u:
         safe_reply(event, TextSendMessage("กรุณาพิมพ์ add เพื่อรับไอดีก่อน"))
+        return
+
+    # ===== AUTO TOPUP: ถ้าเปิด EasySlip ให้ตรวจสลิปแล้วเติมเครดิต (ทำใน background thread ไม่ให้ webhook ค้าง) =====
+    if EASYSLIP_ENABLED and EASYSLIP_API_KEY:
+        if gid and is_backoffice_group_id(gid):
+            return  # ไม่ตรวจรูปในกลุ่มหลังบ้าน
+        threading.Thread(target=process_slip_topup, args=(event, uid), daemon=True).start()
         return
 
     # ตอบการ์ด C ของผู้ที่ส่งรูป
