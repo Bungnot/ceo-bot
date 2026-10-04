@@ -1399,6 +1399,57 @@ def flex_summary(st, event=None):
     )
 
 
+# ---------- รายชื่อสมาชิก + เครดิต (คำสั่ง call ในกลุ่มหลังบ้าน) ----------
+MEMBER_ROWS_PER_PAGE = 25
+
+
+def flex_member_list(rows, total_credit, total_count):
+    """ตารางสมาชิก: ID / ชื่อ / เครดิต — แบ่งหน้าละ 25 คน (carousel)"""
+    pages = [rows[i:i + MEMBER_ROWS_PER_PAGE] for i in range(0, len(rows), MEMBER_ROWS_PER_PAGE)] or [[]]
+    now_txt = datetime.now().strftime("%d/%m %H:%M")
+    bubbles = []
+    for pi, chunk in enumerate(pages, start=1):
+        body = []
+        if pi == 1:
+            body.append(_box([
+                _box([_t("ลูกค้ามีเครดิต", size="xs", color=TH["muted"], align="center"),
+                      _t(f"{fmt(total_count)} คน", size="lg", weight="bold", align="center")],
+                     backgroundColor=TH["page"], cornerRadius="10px", paddingAll="10px", flex=1),
+                _box([_t("เครดิตรวม", size="xs", color=TH["green"], align="center"),
+                      _t(f"{fmt(total_credit)} ฿", size="lg", weight="bold", color=TH["green"], align="center",
+                         wrap=False)],
+                     backgroundColor=TH["green_bg"], cornerRadius="10px", paddingAll="10px", flex=1),
+            ], layout="horizontal", spacing="sm"))
+        body.append(_box([
+            _t("ID", size="xs", weight="bold", color=TH["muted"], flex=2),
+            _t("ชื่อ", size="xs", weight="bold", color=TH["muted"], flex=6),
+            _t("เครดิต", size="xs", weight="bold", color=TH["muted"], align="end", flex=4),
+        ], layout="horizontal", backgroundColor=TH["page"], cornerRadius="6px", paddingAll="8px"))
+        table = []
+        for u in chunk:
+            table.append(_box([
+                _t(str(u.get("cid", "-")), size="sm", weight="bold", color=TH["green"], flex=2),
+                _t(u.get("name") or "-", size="sm", flex=6, wrap=False),
+                _t(fmt(int(u.get("credit", 0) or 0)), size="sm", weight="bold", align="end", flex=4),
+            ], layout="horizontal", paddingAll="7px"))
+            table.append(_sep("none"))
+        if table:
+            table.pop()
+            body.append(_box(table))
+        sub = f"หน้า {pi}/{len(pages)}" if len(pages) > 1 else now_txt
+        bubbles.append(_bubble(_header("💰 รายชื่อสมาชิก", sub, "gray"), body,
+                               _note_footer(f"อัปเดต {now_txt}" + (f"  •  แสดง {len(rows)} จาก {total_count} คน"
+                                                                    if len(rows) < total_count else ""))))
+    # LINE จำกัดขนาด 50KB/ข้อความ → ส่งเป็นหลายข้อความ ข้อความละ 2 หน้า (ตอบได้สูงสุด 5 ข้อความ)
+    msgs = []
+    for i in range(0, min(len(bubbles), 10), 2):
+        grp = bubbles[i:i + 2]
+        contents = grp[0] if len(grp) == 1 else {"type": "carousel", "contents": grp}
+        msgs.append(FlexSendMessage(alt_text=f"รายชื่อสมาชิก {total_count} คน • เครดิตรวม {fmt(total_credit)} บาท",
+                                    contents=contents))
+    return msgs[0] if len(msgs) == 1 else msgs
+
+
 
 
 
@@ -1416,10 +1467,10 @@ def text_bank():
     return TextSendMessage(
         text=(
             "📌 CEO บั้งไฟน้อย\n\n"
-            "⚠️แจ้งเลขบัญชีฝาก\n\n"
-            "🏳️ XXXXX XXXXX   \n"
+            "⚠️แจ้งเลขบัญชีฝาก⚠️\n\n"
+            "🏳️ XXXXXXX   \n"
             "💰 XXXX\n"
-            "💳 XXXX XXXXX\n\n"
+            "💳 XXXX XXX\n\n"
             "📌 เพื่อป้องกันมิจฉาชีพ ชื่อผู้ฝาก-ถอน ต้องเป็นชื่อเดียวกันเท่านั้น⚠️\n"
             "📌 กด C ดูไอดีตัวเองส่งให้แอดมินได้เลย\n"
         )
@@ -3720,12 +3771,16 @@ def on_message(event: MessageEvent):
                 safe_reply(event, TextSendMessage("ยังไม่มีลูกค้าที่มีเครดิต"))
                 return
 
+            total_credit = sum(int(u.get("credit", 0) or 0) for u in table)
+            total_count = len(table)
             table = sorted(table, key=lambda x: (-int(x.get("credit", 0) or 0), int(x.get("cid", 0) or 0)))
             table = table[:100]
 
-            msg = format_user_table(table)
-
-            safe_reply(event, TextSendMessage(msg))
+            try:
+                safe_reply(event, flex_member_list(table, total_credit, total_count))
+            except Exception:
+                app.logger.exception("flex_member_list failed")
+                safe_reply(event, TextSendMessage(format_user_table(table)))
             return
 
 
