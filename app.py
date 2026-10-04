@@ -1369,14 +1369,15 @@ def flex_scoreboard(history_list):
 
 # ---------- สรุปบิล (ตอนปิด/พักรอบ) ----------
 def flex_summary(st, event=None):
+    """สรุปบิล (ตอนปิด/พักรอบ) — ธีมสว่าง แสดงแค่ ชื่อ / ฝั่ง / ยอดเงิน"""
     bets = list(st["bet_index"].values())
-    hi = [b for b in bets if b["side"] == "HI"]
-    lo = [b for b in bets if b["side"] == "LO"]
 
-    body = [
-        _side_row(f"สูง • {len(hi)} บิล", fmt(sum(b["amount"] for b in hi)), "blue", size="lg"),
-        _side_row(f"ต่ำ • {len(lo)} บิล", fmt(sum(b["amount"] for b in lo)), "red", size="lg"),
-    ]
+    body = [_box([
+        _t("ผู้เล่น", size="xs", weight="bold", color=TH["muted"], flex=6),
+        _t("ฝั่ง", size="xs", weight="bold", color=TH["muted"], align="center", flex=2),
+        _t("ยอดเงิน", size="xs", weight="bold", color=TH["muted"], align="end", flex=3),
+    ], layout="horizontal", backgroundColor=TH["page"], cornerRadius="6px", paddingAll="8px")]
+
     if bets:
         table = []
         for b in sorted(bets, key=lambda x: (x["side"], -x["amount"])):
@@ -1385,17 +1386,16 @@ def flex_summary(st, event=None):
                 _t(b["name"], size="sm", flex=6, wrap=False),
                 _t(SIDE_TH[b["side"]], size="sm", color=fg, weight="bold", align="center", flex=2),
                 _t(fmt(b["amount"]), size="sm", weight="bold", align="end", flex=3),
-            ], layout="horizontal", paddingTop="6px", paddingBottom="6px"))
+            ], layout="horizontal", paddingAll="8px"))
             table.append(_sep("none"))
         table.pop()
-        body.append(_box(table, margin="md"))
+        body.append(_box(table))
     else:
         body.append(_t("ยังไม่มีบิล", size="sm", color=TH["faint"], align="center"))
 
     return FlexSendMessage(
         alt_text=f"สรุปการแทง รอบ {st['pairNo']} ({len(bets)} บิล)",
-        contents=_bubble(_header("📋 สรุปบิล", f"รอบ {st['pairNo']}", "gray"), body,
-                         _note_footer(f"รวมทั้งหมด {len(bets)} บิล")),
+        contents=_bubble(_header("📋 สรุปบิล", f"รอบ {st['pairNo']}", "gray"), body),
     )
 
 
@@ -1415,11 +1415,11 @@ def flex_summary(st, event=None):
 def text_bank():
     return TextSendMessage(
         text=(
-            "📌CEO-บั้งไฟน้อย\n\n"
-            "⚠️แจ้งเลขบัญชีฝาก \n\n"
-            "🏳️ XXXXXXXX   \n"
+            "📌 CEO บั้งไฟน้อย\n\n"
+            "⚠️แจ้งเลขบัญชีฝาก\n\n"
+            "🏳️ XXXXX XXXXX   \n"
             "💰 XXXX\n"
-            "💳 XXXXX XXXX\n\n"
+            "💳 XXXX XXXXX\n\n"
             "📌 เพื่อป้องกันมิจฉาชีพ ชื่อผู้ฝาก-ถอน ต้องเป็นชื่อเดียวกันเท่านั้น⚠️\n"
             "📌 กด C ดูไอดีตัวเองส่งให้แอดมินได้เลย\n"
         )
