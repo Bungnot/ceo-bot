@@ -1830,6 +1830,47 @@ def is_allowed_group(gid: str) -> bool:
     if ALLOW_GROUP_IDS: return gid in ALLOW_GROUP_IDS or gid in BACKOFFICE_GROUP_IDS
     return True
 
+
+# ====== QUOTE REPLY: ตอบกลับโดยอ้างอิง (quote) ข้อความ/รูปที่ลูกค้าส่งมา ======
+_QUOTE_TOKENS = {}          # message_id -> (quoteToken, ts)
+_QUOTE_TOKENS_LOCK = threading.Lock()
+_QUOTE_TOKEN_TTL = 600
+
+def _remember_quote_tokens(body: str):
+    """ดึง quoteToken จาก webhook body ดิบ (รองรับ SDK เวอร์ชันที่ยังไม่ parse quoteToken)"""
+    try:
+        data = json.loads(body)
+    except Exception:
+        return
+    now = time.time()
+    with _QUOTE_TOKENS_LOCK:
+        for ev in data.get("events", []) or []:
+            msg = ev.get("message") or {}
+            mid, qt = msg.get("id"), msg.get("quoteToken")
+            if mid and qt:
+                _QUOTE_TOKENS[mid] = (qt, now)
+        for k, (_, ts) in list(_QUOTE_TOKENS.items()):
+            if now - ts > _QUOTE_TOKEN_TTL:
+                _QUOTE_TOKENS.pop(k, None)
+
+def _get_quote_token(event):
+    msg = getattr(event, "message", None)
+    qt = getattr(msg, "quote_token", None)
+    if qt:
+        return qt
+    mid = getattr(msg, "id", None)
+    with _QUOTE_TOKENS_LOCK:
+        item = _QUOTE_TOKENS.get(mid)
+    return item[0] if item else None
+
+def _quote_text(event, text: str):
+    """สร้าง TextSendMessage ที่ quote ข้อความต้นทาง (ถ้าไม่มี quoteToken จะเป็นข้อความธรรมดา)"""
+    m = TextSendMessage(text=text)
+    qt = _get_quote_token(event)
+    if qt:
+        m.quote_token = qt   # SDK แปลงเป็น quoteToken ตอนส่งให้อัตโนมัติ
+    return m
+
 def safe_reply(event, messages):
     """Reply message แบบไม่ทำให้บอทล่ม + retry เมื่อ timeout"""
     import requests as _requests
@@ -1950,6 +1991,7 @@ def webhook():
         return "signature error", 400
 
     try:
+        _remember_quote_tokens(body)
         handler.handle(body, sig)
     except InvalidSignatureError:
         return "signature error", 400
@@ -3837,10 +3879,10 @@ def on_message(event: MessageEvent):
             # ลูกค้ายกเลิกบิลตัวเอง
             if text.strip().upper() == "X":
                 if st["phase"] == "PAUSED":
-                    safe_reply(event, TextSendMessage("กำลังพักรอบ: ลูกค้าไม่สามารถยกเลิกได้ โปรดให้แอดมินดำเนินการ")); return
+                    safe_reply(event, _quote_text(event, "กำลังพักรอบ: ลูกค้าไม่สามารถยกเลิกได้ โปรดให้แอดมินดำเนินการ")); return
                 bet = st["bet_index"].pop(uid, None)
                 if not bet:
-                    safe_reply(event, TextSendMessage("คุณยังไม่มีการเดิมพันในรอบนี้")); return
+                    safe_reply(event, _quote_text(event, "คุณยังไม่มีการเดิมพันในรอบนี้")); return
 
                 with with_users_lock():
                     st["totals"][bet["side"]] -= bet["amount"]
@@ -3858,7 +3900,7 @@ def on_message(event: MessageEvent):
                     line_name = profile.display_name
                 except Exception:
                     line_name = users.get(uid, {}).get("name", "ไม่ทราบชื่อ")
-                safe_reply(event, TextSendMessage(f"คุณ {line_name} ❌ยกเลิกการเดิมพันเดิมสำเร็จ❌ ({'สูง' if bet['side']=='HI' else 'ต่ำ'} {fmt(bet['amount'])})")); return
+                safe_reply(event, _quote_text(event, f"คุณ {line_name} ❌ยกเลิกการเดิมพันเดิมสำเร็จ❌ ({'สูง' if bet['side']=='HI' else 'ต่ำ'} {fmt(bet['amount'])})")); return
 
         # ==== FAST PATH: ส่วนนี้ต้องอยู่นอก if ด้านบน ====
         bet = parse_bet(text)
@@ -3869,15 +3911,15 @@ def on_message(event: MessageEvent):
             
             with with_users_lock(): # [FIXED] ใช้แค่ with_users_lock()
                 if uid not in users:
-                    safe_reply(event, TextSendMessage("กรุณาพิมพ์ add เพื่อรับไอดีก่อนวางบิล")); return
+                    safe_reply(event, _quote_text(event, "กรุณาพิมพ์ add เพื่อรับไอดีก่อนวางบิล")); return
 
                 ok, why = can_bet(st, uid, bet["side"], bet["amount"])
                 if not ok:
-                    safe_reply(event, TextSendMessage(f"❌รับบิลไม่ได้❌: {why}")); return
+                    safe_reply(event, _quote_text(event, f"❌รับบิลไม่ได้❌: {why}")); return
 
                 u = users[uid]
                 if u.get("credit", 0) < bet["amount"]:
-                    safe_reply(event, TextSendMessage(f"ทุนคงเหลือไม่พอ (มี {fmt(u.get('credit',0))})")); return
+                    safe_reply(event, _quote_text(event, f"ทุนคงเหลือไม่พอ (มี {fmt(u.get('credit',0))})")); return
 
                 u["credit"] -= bet["amount"]
                 st["escrow"][uid] = st["escrow"].get(uid, 0) + bet["amount"]
@@ -3890,7 +3932,7 @@ def on_message(event: MessageEvent):
                 st["totals"][bet["side"]] += bet["amount"]
 
                 side_th = "สูง" if bet["side"] == "HI" else "ต่ำ"
-                safe_reply(event, TextSendMessage(
+                safe_reply(event, _quote_text(event, 
                     (f"คุณ {name} ✅ ลงเพิ่ม {side_th} +{fmt(bet['amount'])} • รวม {fmt(total_amt)} • ยอดเงินคงเหลือ {fmt(u['credit'])}"
                      if prev else
                      f"คุณ {name} ✅ เล่น {side_th} = {fmt(bet['amount'])} • ยอดเงินคงเหลือ {fmt(u['credit'])}")
@@ -4064,7 +4106,7 @@ def process_slip_topup(event, uid: str):
         image_bytes = content.content
     except Exception:
         app.logger.exception("slip: download image failed")
-        safe_reply(event, TextSendMessage("❌ โหลดรูปสลิปไม่สำเร็จ กรุณาส่งใหม่อีกครั้ง"))
+        safe_reply(event, _quote_text(event, "❌ โหลดรูปสลิปไม่สำเร็จ กรุณาส่งใหม่อีกครั้ง"))
         return
 
     ok, data, code, msg = easyslip_verify_image(image_bytes)
@@ -4072,7 +4114,7 @@ def process_slip_topup(event, uid: str):
         app.logger.warning("slip: easyslip error uid=%s code=%s msg=%s", uid, code, msg)
         reply = _slip_error_reply(code, msg)
         if reply:
-            safe_reply(event, TextSendMessage(reply))
+            safe_reply(event, _quote_text(event, reply))
         return
 
     raw = data.get("rawSlip") or {}
@@ -4084,24 +4126,24 @@ def process_slip_topup(event, uid: str):
     sender_name = (((raw.get("sender") or {}).get("account") or {}).get("name") or {}).get("th") or "-"
 
     if not trans_ref or amount <= 0:
-        safe_reply(event, TextSendMessage("❌ อ่านข้อมูลสลิปไม่ครบ กรุณาติดต่อแอดมิน"))
+        safe_reply(event, _quote_text(event, "❌ อ่านข้อมูลสลิปไม่ครบ กรุณาติดต่อแอดมิน"))
         return
 
     rc_ok, rc_why = _slip_check_receiver(data)
     if not rc_ok:
-        safe_reply(event, TextSendMessage(f"❌ ไม่สามารถเติมอัตโนมัติ: {rc_why}"))
+        safe_reply(event, _quote_text(event, f"❌ ไม่สามารถเติมอัตโนมัติ: {rc_why}"))
         return
 
     age_ok, age_why = _slip_check_age(raw)
     if not age_ok:
-        safe_reply(event, TextSendMessage(f"❌ ไม่สามารถเติมอัตโนมัติ: {age_why}\nกรุณาติดต่อแอดมิน"))
+        safe_reply(event, _quote_text(event, f"❌ ไม่สามารถเติมอัตโนมัติ: {age_why}\nกรุณาติดต่อแอดมิน"))
         return
 
     if amount < SLIP_MIN_AMOUNT:
-        safe_reply(event, TextSendMessage(f"❌ ยอดฝากขั้นต่ำ {fmt(SLIP_MIN_AMOUNT)} บาท"))
+        safe_reply(event, _quote_text(event, f"❌ ยอดฝากขั้นต่ำ {fmt(SLIP_MIN_AMOUNT)} บาท"))
         return
     if SLIP_MAX_AMOUNT and amount > SLIP_MAX_AMOUNT:
-        safe_reply(event, TextSendMessage(
+        safe_reply(event, _quote_text(event, 
             f"⚠️ ยอด {fmt(amount)} บาท เกินวงเงินเติมอัตโนมัติ\nแอดมินจะตรวจสอบและเติมให้ครับ"))
         return
 
@@ -4109,19 +4151,19 @@ def process_slip_topup(event, uid: str):
     with _slips_lock:
         used = _slips_used.get(trans_ref)
         if used:
-            safe_reply(event, TextSendMessage(
+            safe_reply(event, _quote_text(event, 
                 f"❌ สลิปนี้ถูกใช้เติมไปแล้ว (ID {used.get('cid')} เวลา {used.get('time')})"))
             return
         if data.get("isDuplicate"):
             # EasySlip เคยเห็นสลิปนี้ แต่ระบบเรายังไม่เคยเติม → ให้แอดมินตรวจเอง ไม่เติมอัตโนมัติ
-            safe_reply(event, TextSendMessage(
+            safe_reply(event, _quote_text(event, 
                 "⚠️ สลิปนี้เคยถูกตรวจแล้ว ระบบไม่เติมอัตโนมัติ\nแอดมินจะตรวจสอบให้ครับ"))
             return
 
         with with_users_lock():
             u = users.get(uid)
             if not u:
-                safe_reply(event, TextSendMessage("กรุณาพิมพ์ add เพื่อรับไอดีก่อน"))
+                safe_reply(event, _quote_text(event, "กรุณาพิมพ์ add เพื่อรับไอดีก่อน"))
                 return
             # บันทึกสลิปลงไฟล์ก่อน (ถ้าเขียนไม่ได้ = ไม่เติม กันเติมซ้ำ)
             _slips_used[trans_ref] = {
@@ -4138,7 +4180,7 @@ def process_slip_topup(event, uid: str):
             except Exception:
                 _slips_used.pop(trans_ref, None)
                 app.logger.exception("slip: save slips_used failed")
-                safe_reply(event, TextSendMessage("⚠️ ระบบบันทึกสลิปไม่สำเร็จ แอดมินจะตรวจสอบให้ครับ"))
+                safe_reply(event, _quote_text(event, "⚠️ ระบบบันทึกสลิปไม่สำเร็จ แอดมินจะตรวจสอบให้ครับ"))
                 return
 
             u["credit"] = int(u.get("credit", 0) or 0) + amount
@@ -4147,7 +4189,7 @@ def process_slip_topup(event, uid: str):
         save_users_persist()
 
     app.logger.info("slip: topup ok uid=%s cid=%s amount=%s ref=%s", uid, cid, amount, trans_ref)
-    safe_reply(event, TextSendMessage(
+    safe_reply(event, _quote_text(event, 
         f"✅ เติมเครดิตอัตโนมัติสำเร็จ\n"
         f"🎫 ID : {cid}  {name}\n"
         f"💰 ยอดฝาก {fmt(amount)} บาท\n"
